@@ -6,6 +6,10 @@ zotero:
 
 source:
   arxiv:
+    conversion_delay: 1 # Seconds between conversions; 0 is suitable for metadata-only mode.
+    api_retries: 2
+    batch_retries: 2
+    rss_fallback: true # If metadata API fails, retain RSS title/abstract candidates.
     fetch_full_text: true # Set false for lightweight metadata-only recommendations.
     category: null # The categories of target arxiv papers. Find the abbr of your research area from [here](https://arxiv.org/category_taxonomy). Example: ["cs.AI","cs.CV","cs.LG","cs.CL"]
     include_cross_list: false # Whether to include arXiv cross-list papers in subscribed categories. Example: true
@@ -17,6 +21,9 @@ source:
     include_new_versions: false # Whether to include revised versions (v2, v3, ...) of previously posted chemrxiv preprints in addition to new first postings. chemrxiv has no category filter: all new preprints (a few dozen per day) are retrieved via Crossref and left to the reranker. Example: true
 
 email:
+  sender_name: Daily Paper
+  subject_prefix: Daily Paper
+  max_width: 1120 # Desktop width in pixels; fluid below this width.
   notes_collapsible: false # Most compatible: inline notes. true enables native details/summary.
   sender: ??? # The email account of the SMTP server that sends you email. Example: abc@qq.com
   receiver: ??? # The email account that receives the paper list. Example: abc@outlook.com
@@ -32,9 +39,12 @@ llm:
     max_chunks: 6
     max_output_tokens: 3500
     extraction_timeout: 90 # Per extraction attempt, seconds.
+    format_attempts: 2 # Retry malformed JSON/sections; API errors use SDK retries.
   enabled: true # Disable to use the original abstract without any LLM credentials.
   api:
     key: ??? # API Key of your LLM API. Example: sk-xxx
+    timeout: 90
+    max_retries: 2 # Additional SDK retries for transient errors, not model/auth errors.
     base_url: ??? # API URL of your LLM API. Example: https://api.openai.com/v1
   api_mode: chat_completion # The LLM API to use. Options: chat_completion or response.
   generation_kwargs:
@@ -66,13 +76,27 @@ executor:
 # Opt-in extension. Keeping it disabled preserves upstream ranking behavior.
 recommendation:
   enabled: false
+  http:
+    attempts: 3
+    read_timeout: 30
+    max_retry_delay: 30
   recent_limit: 100
   half_life_days: 60
   query_terms: 80
   min_matched_terms: 3
   min_relevance: 0.06 # Normalized BM25 score, not a probability or quality guarantee.
   interest_slots: 2
+  explore_slots: 1
+  min_interest_for_explore: 2
+  fill_with_interest: true # Fill remaining total capacity with qualified interest papers.
+  source_limits: {} # Optional per-source caps, e.g. {arxiv: 2, semantic_scholar: 1}.
+  source_weights: {} # Relative rank weights; omitted sources use 1.0, zero disables selection.
+  explore_sources: [huggingface, openalex] # Alternating preference, not a hard quota.
   explore_max_relevance: 0.15
+  explore_include_topics: [] # Free-text topic descriptions; empty means unrestricted.
+  explore_exclude_topics: [] # Reject when exclusion similarity dominates included topics.
+  explore_focus_min_score: 0.05
+  explore_exclude_min_score: 0.05
   semantic_scholar:
     enabled: true
     api_key: ${oc.env:SEMANTIC_SCHOLAR_API_KEY,null}

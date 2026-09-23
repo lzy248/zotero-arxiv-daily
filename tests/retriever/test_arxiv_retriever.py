@@ -88,3 +88,17 @@ def test_run_with_hard_timeout_returns_none_on_failure(monkeypatch):
     )
     assert result is None
     assert "boom" in warnings[0]
+
+
+def test_metadata_failure_uses_rss_without_losing_new_papers(config, mock_feedparser, monkeypatch):
+    class FailedClient:
+        def __init__(self, **kwargs):
+            pass
+        def results(self, search):
+            raise arxiv_retriever.arxiv.HTTPError('https://export.arxiv.org', 0, 503)
+    monkeypatch.setattr(arxiv_retriever.arxiv, 'Client', FailedClient)
+    monkeypatch.setattr('zotero_arxiv_daily.retriever.base.sleep', lambda _: None)
+    papers = ArxivRetriever(config).retrieve_papers()
+    assert len(papers) == len([e for e in mock_feedparser.entries if e.get('arxiv_announce_type') == 'new'])
+    assert all(p.abstract and p.arxiv_id and p.pdf_url for p in papers)
+    assert all('Announce Type:' not in p.abstract for p in papers)

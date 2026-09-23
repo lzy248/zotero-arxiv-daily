@@ -5,7 +5,10 @@ import numpy as np
 @register_reranker("local")
 class LocalReranker(BaseReranker):
     def get_similarity_score(self, s1: list[str], s2: list[str]) -> np.ndarray:
-        from sentence_transformers import SentenceTransformer
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise RuntimeError('Local embedding reranker requires: uv sync --extra embeddings') from exc
         if not self.config.executor.debug:
             from transformers.utils import logging as transformers_logging
             from huggingface_hub.utils import logging as hf_logging

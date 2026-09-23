@@ -21,7 +21,7 @@ def retrieve(profile, config):
     headers = {"x-api-key": config.api_key} if config.api_key else {}
     # Resolve external IDs in one batch. Unresolvable seeds return null.
     resolved = request_json("POST", "https://api.semanticscholar.org/graph/v1/paper/batch",
-                            params={"fields": "paperId"}, json={"ids": identifiers}, headers=headers)
+                            config=config, params={"fields": "paperId"}, json={"ids": identifiers}, headers=headers)
     for identifier, result in zip(identifiers, resolved):
         if result and result.get('paperId'):
             seed_by_id[identifier].semantic_scholar_id = result['paperId']
@@ -29,7 +29,7 @@ def retrieve(profile, config):
     if not ids:
         return []
     data = request_json("POST", "https://api.semanticscholar.org/recommendations/v1/papers/",
-                        params={"limit": config.limit, "fields":
+                        config=config, params={"limit": config.limit, "fields":
                                 "paperId,title,abstract,authors,url,externalIds,citationCount,publicationDate,openAccessPdf"},
                         json={"positivePaperIds": ids, "negativePaperIds": []}, headers=headers)
 

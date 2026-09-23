@@ -5,6 +5,9 @@ zotero:
   api_key: ${oc.env:ZOTERO_KEY}
 
 email:
+  sender_name: Daily Paper
+  subject_prefix: Daily Paper
+  max_width: 1120
   sender: ${oc.env:SENDER}
   receiver: ${oc.env:RECEIVER}
   sender_password: ${oc.env:SENDER_PASSWORD}
@@ -15,6 +18,8 @@ email:
 llm:
   enabled: true
   api:
+    timeout: 90
+    max_retries: 2
     key: ${oc.env:OPENAI_API_KEY}
     base_url: ${oc.env:OPENAI_API_BASE}
   api_mode: chat_completion
@@ -25,9 +30,11 @@ llm:
   reading_notes:
     enabled: true
     language: Chinese
+    format_attempts: 2
 
 source:
   arxiv:
+    conversion_delay: 0
     category: [cs.AI, cs.LG, cs.CL, cs.CV, cs.IR, cs.NE, cs.MA, cs.RO, cs.SE, cs.DB, cs.DS, cs.DC, cs.CR]
     fetch_full_text: false # Notes fetch full text only after final selection.
 
@@ -39,5 +46,28 @@ executor:
 
 recommendation:
   enabled: true
+  interest_slots: 2
+  explore_slots: 1
+  min_interest_for_explore: 2
+  fill_with_interest: true
+  source_limits: {}
+  source_weights: {}
+  http:
+    attempts: 3
+    read_timeout: 30
+    max_retry_delay: 30
+  explore_include_topics:
+    - >-
+      natural language processing NLP linguistic text generation large language models
+      language modeling LLM LLMs reasoning chain of thought retrieval augmented generation
+      RAG question answering tokenization prompting instruction tuning alignment RLHF
+      hallucination factuality language agents agentic tool use tool calling autonomous
+      agents multi agent conversational dialogue chatbots code generation coding agents
+  explore_exclude_topics:
+    - >-
+      computer vision visual image images video videos generation synthesis text to image
+      text to video image editing camera scenes 3D reconstruction segmentation object
+      detection world models rendering pixels depth motion robotics
+    - biology medicine molecular protein physics quantum particles
   openalex:
     fields: [17] # Computer Science only.

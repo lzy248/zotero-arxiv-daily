@@ -44,7 +44,9 @@ class Executor:
         self.curated = config.get('recommendation', {}).get('enabled', False)
         if self.curated and config.executor.reranker != 'bm25':
             raise ValueError('Curated recommendations require executor.reranker=bm25')
-        self.openai_client = (OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url)
+        self.openai_client = (OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url,
+                                    timeout=config.llm.api.get('timeout', 90),
+                                    max_retries=config.llm.api.get('max_retries', 2))
                               if config.llm.get('enabled', True) else None)
     def fetch_zotero_corpus(self) -> list[CorpusPaper]:
         logger.info("Fetching zotero corpus")
@@ -140,6 +142,8 @@ class Executor:
             logger.info("No qualifying new papers found. No email will be sent.")
             return
         logger.info("Preparing summaries...")
+        logger.info('Selected {} papers; source counts: {}', len(reranked_papers),
+                    {source: sum(p.source == source for p in reranked_papers) for source in dict.fromkeys(p.source for p in reranked_papers)})
         for p in tqdm(reranked_papers):
             if self.openai_client is not None:
                 notes_config = self.config.llm.get('reading_notes', {})
@@ -150,6 +154,8 @@ class Executor:
             else:
                 p.tldr = p.abstract or 'Abstract unavailable; follow the paper link for details.'
         logger.info("Sending email...")
-        email_content = render_email(reranked_papers, collapsible=self.config.email.get('notes_collapsible', False))
+        logger.info('Reading notes generated: {}/{}', sum(bool(p.reading_notes) for p in reranked_papers), len(reranked_papers))
+        email_content = render_email(reranked_papers, collapsible=self.config.email.get('notes_collapsible', False),
+                                     max_width=self.config.email.get('max_width', 1120))
         send_email(self.config, email_content)
         logger.info("Email sent successfully")

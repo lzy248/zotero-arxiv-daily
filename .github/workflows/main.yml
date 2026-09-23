@@ -2,11 +2,13 @@ name: Send emails daily
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '0 3 * * *' # 11:00 Asia/Shanghai
 
 jobs:
   calculate-and-send:
     runs-on: ubuntu-latest
+    env:
+      HF_HUB_CACHE: /tmp/daily-paper-model-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -16,6 +18,16 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Cache optional embedding weights
+        if: vars.INSTALL_EMBEDDINGS == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.HF_HUB_CACHE }}
+          key: paper-models-${{ runner.os }}-${{ hashFiles('uv.lock') }}-${{ vars.EMBEDDING_CACHE_VERSION }}
 
       - name: Run script
         env:
@@ -29,8 +41,13 @@ jobs:
           SEMANTIC_SCHOLAR_API_KEY: ${{ secrets.SEMANTIC_SCHOLAR_API_KEY }}
           OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
           CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
+          INSTALL_EMBEDDINGS: ${{ vars.INSTALL_EMBEDDINGS }}
         run: |
           if [ -n "$CUSTOM_CONFIG" ]; then
             printf "%s\n" "$CUSTOM_CONFIG" > config/custom.yaml
           fi
-          uv run src/zotero_arxiv_daily/main.py
+          if [ "$INSTALL_EMBEDDINGS" = "true" ]; then
+            uv run --locked --no-dev --extra embeddings src/zotero_arxiv_daily/main.py
+          else
+            uv run --locked --no-dev src/zotero_arxiv_daily/main.py
+          fi

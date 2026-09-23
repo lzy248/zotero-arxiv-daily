@@ -102,3 +102,16 @@ def test_notes_only_generated_for_selected_papers(config, monkeypatch):
     monkeypatch.setattr('zotero_arxiv_daily.executor.send_email', lambda *a: None)
     Executor(config).run()
     assert len(generated) == 2 and candidates[-1] not in generated
+
+
+def test_malformed_notes_retry_then_success(config, monkeypatch):
+    monkeypatch.setattr(notes, 'fetch_full_text', lambda *a: None)
+    results = iter(['not json', response()])
+    calls = []
+    def request(*args):
+        calls.append(1)
+        return next(results)
+    monkeypatch.setattr(notes, '_request_llm', request)
+    p = paper()
+    notes.generate_reading_notes(p, object(), config.llm, config.llm.reading_notes)
+    assert p.reading_notes and len(calls) == 2

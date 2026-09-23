@@ -13,6 +13,9 @@ from time import sleep
 from typing import Any, Callable, TypeVar
 from loguru import logger
 import requests
+import re
+from html import unescape
+from datetime import datetime
 
 T = TypeVar("T")
 
@@ -114,7 +117,7 @@ class ArxivRetriever(BaseRetriever):
             raise ValueError("category must be specified for arxiv.")
 
     def _retrieve_raw_papers(self) -> list[ArxivResult]:
-        client = arxiv.Client(num_retries=10, delay_seconds=10)
+        client = arxiv.Client(num_retries=self.retriever_config.get('api_retries', 2), delay_seconds=10)
         query = '+'.join(self.config.source.arxiv.category)
         include_cross_list = self.config.source.arxiv.get("include_cross_list", False)
         # Get the latest paper from arxiv rss feed
@@ -128,14 +131,16 @@ class ArxivRetriever(BaseRetriever):
             for i in feed.entries
             if i.get("arxiv_announce_type", "new") in allowed_announce_types
         ]
+        rss_by_id = {entry.id.removeprefix('oai:arXiv.org:'): entry for entry in feed.entries}
         if self.config.executor.debug:
             all_paper_ids = all_paper_ids[:10]
 
         # Get full information of each paper from arxiv api
         bar = tqdm(total=len(all_paper_ids))
-        max_batch_retries = 5
+        max_batch_retries = self.retriever_config.get('batch_retries', 2)
         batch_retry_delay = 30
         for i in range(0, len(all_paper_ids), 20):
+            fallback = False
             search = arxiv.Search(id_list=all_paper_ids[i:i + 20])
             for attempt in range(max_batch_retries):
                 try:
@@ -149,7 +154,30 @@ class ArxivRetriever(BaseRetriever):
                         logger.warning(f"arXiv API 429 on batch {i // 20}, retry {attempt + 1}/{max_batch_retries} in {wait}s")
                         sleep(wait)
                     else:
-                        raise
+                        if not self.retriever_config.get('rss_fallback', True):
+                            raise
+                        logger.warning('arXiv metadata API failed (HTTP {}); using RSS metadata for remaining papers', exc.status)
+                        for paper_id in all_paper_ids[i:]:
+                            entry = rss_by_id[paper_id]
+                            abstract = unescape(re.sub(r'<[^>]+>', ' ', entry.get('summary', '')))
+                            abstract = abstract.split('Abstract:', 1)[-1].strip()
+                            if not entry.get('title') or not abstract:
+                                continue
+                            try:
+                                published = datetime.fromisoformat(entry.get('published', '').replace('Z', '+00:00'))
+                            except ValueError:
+                                published = None
+                            raw_papers.append(Paper(
+                                source=self.name, title=entry.title,
+                                authors=[name.strip() for author in entry.get('authors', [])
+                                         for name in author.get('name', '').split(',') if name.strip()],
+                                abstract=abstract, url=f'https://arxiv.org/abs/{paper_id}',
+                                pdf_url=f'https://arxiv.org/pdf/{paper_id}', arxiv_id=paper_id,
+                                published_date=published))
+                        fallback = True
+                        break
+            if fallback:
+                break
             if i + 20 < len(all_paper_ids):
                 sleep(3)
         bar.close()
@@ -157,6 +185,8 @@ class ArxivRetriever(BaseRetriever):
         return raw_papers
 
     def convert_to_paper(self, raw_paper: ArxivResult) -> Paper:
+        if isinstance(raw_paper, Paper):
+            return raw_paper
         title = raw_paper.title
         authors = [a.name for a in raw_paper.authors]
         abstract = raw_paper.summary

@@ -120,13 +120,25 @@ def generate_reading_notes(paper, client, llm_config, config):
             'Each value should contain 1-3 substantive paragraphs, approximately 120-220 Chinese '
             'characters when applicable. Use plain text with newlines, no HTML or Markdown fences. '
             'If input is abstract-only or sampled, explicitly limit conclusions to that evidence.')
-        raw = _request_llm(client, params, _messages(
-            instruction, f'Title: {paper.title}\nEvidence coverage: {basis}\n\n{evidence}'))
-        raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip())
-        notes = json.loads(raw)
-        if not isinstance(notes, dict) or any(not isinstance(notes.get(k), str) or not notes[k].strip() for k in SECTIONS):
-            raise ValueError('Incomplete reading notes JSON')
-        paper.reading_notes = {key: notes[key].strip()[:1200] for key in SECTIONS}
+        attempts = config.get('format_attempts', 2)
+        if not 1 <= attempts <= 5:
+            raise ValueError('format_attempts must be between 1 and 5')
+        for attempt in range(attempts):
+            raw = _request_llm(client, params, _messages(
+                instruction, f'Title: {paper.title}\nEvidence coverage: {basis}\n\n{evidence}'))
+            try:
+                raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip())
+                notes = json.loads(raw)
+                if not isinstance(notes, dict) or any(not isinstance(notes.get(k), str) or not notes[k].strip() for k in SECTIONS):
+                    raise ValueError('Incomplete reading notes JSON')
+                paper.reading_notes = {key: notes[key].strip()[:1200] for key in SECTIONS}
+                break
+            except (ValueError, AttributeError):
+                if attempt == attempts - 1:
+                    raise
+                logger.warning('Reading notes format invalid; retry {}/{}', attempt + 1, attempts - 1)
+                instruction += ' Previous output was invalid. Return a complete JSON object with all five string keys.'
+
     except Exception as exc:
         logger.warning('Reading notes unavailable ({})', type(exc).__name__)
         paper.reading_notes_status = '详细笔记暂未生成，请参考摘要或阅读原文。'

@@ -4,6 +4,7 @@ zotero:
   include_path: null # Or set a list of glob patterns, e.g. ["2026/survey/**","2026/reading-group/**"]
 
 email:
+  max_width: 1120
   notes_collapsible: true
   sender: ${oc.env:SENDER}
   receiver: ${oc.env:RECEIVER}
@@ -13,8 +14,10 @@ email:
 
 llm:
   enabled: false
+  language: Chinese
   reading_notes:
     enabled: true # Runs automatically after selection when llm.enabled is true.
+    language: Chinese
   api:
     key: ${oc.env:OPENAI_API_KEY}
     base_url: ${oc.env:OPENAI_API_BASE}
@@ -24,6 +27,7 @@ llm:
 
 source:
   arxiv:
+    conversion_delay: 0
     fetch_full_text: false # Abstracts suffice for ranking and optional TLDR.
     category: [cs.AI, cs.LG, cs.CL, cs.CV, cs.IR, cs.NE, cs.MA, cs.RO, cs.SE, cs.DB, cs.DS, cs.DC, cs.CR]
 
@@ -35,5 +39,22 @@ executor:
 
 recommendation:
   enabled: true
+  interest_slots: 2
+  explore_slots: 1
+  min_interest_for_explore: 2
+  fill_with_interest: true
+  explore_include_topics:
+    - >-
+      natural language processing NLP linguistic text generation large language models
+      language modeling LLM LLMs reasoning chain of thought retrieval augmented generation
+      RAG question answering tokenization prompting instruction tuning alignment RLHF
+      hallucination factuality language agents agentic tool use tool calling autonomous
+      agents multi agent conversational dialogue chatbots code generation coding agents
+  explore_exclude_topics:
+    - >-
+      computer vision visual image images video videos generation synthesis text to image
+      text to video image editing camera scenes 3D reconstruction segmentation object
+      detection world models rendering pixels depth motion robotics
+    - biology medicine molecular protein physics quantum particles
   openalex:
     fields: [17] # Computer Science only; no Biology, Physics or Medicine rotation.

@@ -131,6 +131,11 @@ def test_send_email_starttls_success(config, monkeypatch):
     assert recipients == ["test@example.com"]
     # Body is a full MIME message (base64-encoded). Check the raw MIME string.
     assert "text/html" in body
+    from email import message_from_string
+    from email.header import decode_header, make_header
+    message = message_from_string(body)
+    assert str(make_header(decode_header(message['Subject']))).startswith('Daily Paper ')
+    assert 'Daily Paper' in str(make_header(decode_header(message['From'])))
 
 
 def test_send_email_falls_back_to_ssl(config, monkeypatch):

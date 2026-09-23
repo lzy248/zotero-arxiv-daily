@@ -8,6 +8,7 @@ import unicodedata
 from urllib.parse import unquote
 
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 STOP_WORDS = ENGLISH_STOP_WORDS | {
     "paper", "study", "results", "propose", "proposed", "approach", "method",
@@ -111,8 +112,8 @@ class InterestProfile:
             raise ValueError('Interest window, half life and query size must be positive')
         if not 0 < config.min_relevance <= 1 or not 0 <= config.explore_max_relevance <= 1:
             raise ValueError('Relevance thresholds must lie between zero and one')
-        if config.min_matched_terms < 1 or config.interest_slots not in (2, 3):
-            raise ValueError('Require positive matched terms and 2 or 3 interest slots')
+        if config.min_matched_terms < 1 or config.interest_slots < 0:
+            raise ValueError('Require positive matched terms and nonnegative interest slots')
         self.config = config
         self.now = utc_naive(now or datetime.now(timezone.utc))
         self.corpus = sorted(corpus, key=lambda p: utc_naive(p.added_date), reverse=True)[:config.recent_limit]
@@ -161,13 +162,42 @@ class InterestProfile:
         return selected
 
 
+def focused_explore_candidates(candidates, config):
+    """TF-IDF unigram/bigram domain gate, independent of the user's narrow interests."""
+    include = list(config.get('explore_include_topics', []))
+    exclude = list(config.get('explore_exclude_topics', []))
+    if not candidates or not (include or exclude):
+        return {id(p) for p in candidates}
+    prototypes = include + exclude
+    if any(not isinstance(t, str) or not tokenize(t) for t in prototypes):
+        raise ValueError('Explore topic descriptions must contain meaningful text')
+    texts = [f'{p.title} {p.title} {p.abstract}' for p in candidates]
+    vectorizer = TfidfVectorizer(tokenizer=tokenize, token_pattern=None, ngram_range=(1, 2))
+    vectors = vectorizer.fit_transform([*prototypes, *texts])
+    scores = (vectors[len(prototypes):] @ vectors[:len(prototypes)].T).toarray()
+    selected = set()
+    for paper, row in zip(candidates, scores):
+        positive = max(row[:len(include)], default=0)
+        negative = max(row[len(include):], default=0)
+        if include and positive < config.get('explore_focus_min_score', .05):
+            continue
+        if exclude and negative >= config.get('explore_exclude_min_score', .05):
+            if not include or negative >= positive:
+                continue
+        selected.add(id(paper))
+    return selected
+
+
 def select_daily(candidates, library, profile, config, max_papers=3):
     related, explore = [], []
+    explore_sources = list(config.get('explore_sources', ['huggingface', 'openalex']))
+    focused = focused_explore_candidates(
+        [p for p in candidates if p.source in explore_sources], config)
     for paper in candidates:
         relevance = profile.score(paper)
         paper.score = relevance
-        if paper.source in {"huggingface", "openalex"}:
-            if paper.popularity > 0 and relevance <= config.explore_max_relevance:
+        if paper.source in explore_sources:
+            if id(paper) in focused and paper.popularity > 0 and relevance <= config.explore_max_relevance:
                 paper.recommendation_type = "Explore / Trending"
                 explore.append(paper)
         elif relevance >= config.min_relevance:
@@ -182,11 +212,15 @@ def select_daily(candidates, library, profile, config, max_papers=3):
                 paper.recommendation_reason = "New paper matching your recent Zotero topics (BM25)"
             related.append(paper)
     # Merge the two relevance rankings with reciprocal ranks, avoiding incomparable scales.
-    queues = [[p for p in related if (p.source == "semantic_scholar") == s2] for s2 in (False, True)]
     merged = []
-    for queue in queues:
-        queue.sort(key=lambda p: p.score, reverse=True)
-        merged.extend((1 / (rank + 1), p) for rank, p in enumerate(queue))
+    weights = config.get('source_weights', {})
+    for source in dict.fromkeys(p.source for p in related):
+        queue = sorted([p for p in related if p.source == source], key=lambda p: p.score, reverse=True)
+        weight = weights.get(source, 1.0)
+        if weight < 0:
+            raise ValueError('Source weights must be nonnegative')
+        if weight:
+            merged.extend((weight / (rank + 1), p) for rank, p in enumerate(queue))
     merged.sort(key=lambda pair: pair[0], reverse=True)
     # Resolve aliases across every source, including rejected/low-quality rows.
     ordered = [p for _, p in merged] + explore
@@ -194,15 +228,33 @@ def select_daily(candidates, library, profile, config, max_papers=3):
     allowed = {id(p) for p in representatives}
     related = [p for _, p in merged if id(p) in allowed]
     explore = [p for p in explore if id(p) in allowed]
-    limit = min(3, max(0, max_papers))
-    chosen = related[:min(config.interest_slots, limit)]
-    # Alternate providers; OpenAlex itself rotates fields. No persistent state.
-    preferred = "huggingface" if profile.now.toordinal() % 2 == 0 else "openalex"
-    explore.sort(key=lambda p: (p.source == preferred, p.popularity), reverse=True)
+    explore_slots = config.get('explore_slots', 1)
+    minimum = config.get('min_interest_for_explore', 2)
+    caps = config.get('source_limits', {})
+    numbers = [max_papers, config.interest_slots, explore_slots, minimum, *caps.values()]
+    if any(not isinstance(n, int) or isinstance(n, bool) or n < 0 for n in numbers):
+        raise ValueError('Paper counts and source limits must be nonnegative integers')
+    limit = max_papers
+    chosen, counts = [], Counter()
+
+    def take(pool, slots):
+        added = 0
+        for candidate in pool:
+            if added >= slots or len(chosen) >= limit:
+                break
+            if candidate in chosen or counts[candidate.source] >= caps.get(candidate.source, limit):
+                continue
+            chosen.append(candidate)
+            counts[candidate.source] += 1
+            added += 1
+
+    take(related, config.interest_slots)
+    if explore_sources:
+        preferred = explore_sources[profile.now.toordinal() % len(explore_sources)]
+        explore.sort(key=lambda p: (p.source == preferred, p.popularity), reverse=True)
     explore = deduplicate(explore, [*library, *chosen])
-    # Never send an explore-only digest: current interests remain the majority.
-    if len(chosen) >= 2 and len(chosen) < limit and explore:
-        chosen.append(explore[0])
-    if len(chosen) < limit:
-        chosen.extend(deduplicate(related, [*library, *chosen])[:limit - len(chosen)])
+    if len(chosen) >= minimum:
+        take(explore, explore_slots)
+    if config.get('fill_with_interest', True):
+        take(related, limit - len(chosen))
     return chosen

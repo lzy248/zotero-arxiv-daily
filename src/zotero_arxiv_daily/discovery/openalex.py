@@ -17,7 +17,7 @@ def retrieve(profile, config):
               "sort": "cited_by_count:desc", "per_page": config.limit}
     if config.api_key:
         params["api_key"] = config.api_key
-    data = request_json("GET", "https://api.openalex.org/works", params=params)
+    data = request_json("GET", "https://api.openalex.org/works", params=params, config=config)
 
     def convert(row, rank):
         citations = row.get("cited_by_count") or 0

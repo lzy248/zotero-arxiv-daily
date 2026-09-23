@@ -10,12 +10,6 @@ from email.utils import parseaddr, formataddr
 from loguru import logger
 import datetime
 from omegaconf import DictConfig
-import pymupdf
-import pymupdf.layout
-pymupdf.TOOLS.mupdf_display_errors(False)
-pymupdf.layout.activate()
-
-import pymupdf4llm  # noqa: E402
 
 _TOKEN_RE = re.compile(r'[a-zA-Z0-9]+')
 
@@ -133,6 +127,12 @@ def extract_tex_code_from_tar(file_path:str, paper_id:str, paper_title:str | Non
     return file_contents
 
 def extract_markdown_from_pdf(file_path:str) -> str:
+    # Load the PDF layout model only inside the selected-paper extraction worker.
+    import pymupdf
+    import pymupdf.layout
+    pymupdf.TOOLS.mupdf_display_errors(False)
+    pymupdf.layout.activate()
+    import pymupdf4llm
     return pymupdf4llm.to_markdown(file_path,use_ocr=False,header=False,footer=False,ignore_code=True)
 
 def glob_match(path:str, pattern:str) -> bool:
@@ -150,10 +150,10 @@ def send_email(config:DictConfig, html:str):
         return formataddr((Header(name, 'utf-8').encode(), addr))
 
     msg = MIMEText(html, 'html', 'utf-8')
-    msg['From'] = _format_addr('Github Action <%s>' % sender)
+    msg['From'] = formataddr((str(Header(config.email.get('sender_name', 'Daily Paper'), 'utf-8')), sender))
     msg['To'] = _format_addr('You <%s>' % receiver)
     today = datetime.datetime.now().strftime('%Y/%m/%d')
-    msg['Subject'] = Header(f'Daily arXiv {today}', 'utf-8').encode()
+    msg['Subject'] = Header(f"{config.email.get('subject_prefix', 'Daily Paper')} {today}", 'utf-8').encode()
 
     try:
         server = smtplib.SMTP(smtp_server, smtp_port)

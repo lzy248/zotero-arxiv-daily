@@ -107,3 +107,15 @@ def test_no_seed_ids_avoids_api_call(config, monkeypatch):
     monkeypatch.setattr(discovery.semantic_scholar, 'request_json', forbidden)
     profile = InterestProfile([corpus()], config.recommendation, NOW)
     assert discovery.semantic_scholar.retrieve(profile, config.recommendation.semantic_scholar) == []
+
+
+def test_custom_retry_count_and_timeout(monkeypatch):
+    calls = []
+    def request(*args, **kwargs):
+        calls.append(kwargs['timeout'])
+        raise requests.Timeout()
+    monkeypatch.setattr(common.requests, 'request', request)
+    monkeypatch.setattr(common.time, 'sleep', lambda _: None)
+    with pytest.raises(RuntimeError):
+        common.request_json('GET', 'https://example.org', config={'http': {'attempts': 2, 'read_timeout': 7}})
+    assert calls == [(10, 7), (10, 7)]

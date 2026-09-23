@@ -12,7 +12,7 @@ def retrieve(profile, config):
         params["month"] = profile.now.strftime("%Y-%m")
     elif config.period != "daily":
         raise ValueError("huggingface.period must be daily, weekly or monthly")
-    data = request_json("GET", "https://huggingface.co/api/daily_papers", params=params)
+    data = request_json("GET", "https://huggingface.co/api/daily_papers", params=params, config=config)
 
     def convert(row, rank):
         paper = row["paper"]

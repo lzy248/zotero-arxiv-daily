@@ -25,6 +25,8 @@ def _base_config():
             config_name="default",
             overrides=[
                 "recommendation.enabled=false",
+                "recommendation.explore_include_topics=[]",
+                "recommendation.explore_exclude_topics=[]",
                 "llm.enabled=true",
                 "llm.reading_notes.enabled=false",
                 "source.arxiv.fetch_full_text=true",

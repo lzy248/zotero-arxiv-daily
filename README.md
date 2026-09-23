@@ -1,221 +1,142 @@
-<p align="center">
-  <a href="" rel="noopener">
- <img width=200px height=200px src="assets/logo.svg" alt="logo"></a>
-</p>
+# Daily Paper
 
-<h3 align="center">Zotero-arXiv-Daily</h3>
+每天，从你的 Zotero 最近研究兴趣出发，挑选值得读的论文，并把中文摘要和可选的详细读书笔记发到邮箱。
 
-> 本分支新增每日 2–3 篇精选：近期 Zotero 兴趣 BM25 排序、Semantic Scholar 相关论文、
-> Hugging Face / OpenAlex 探索来源，复用 upstream 邮件与 Actions。
-> **[配置、算法与模块说明](docs/curated-recommendations.zh-CN.md)**（部署时请更新 `CUSTOM_CONFIG`）。
-> **[GitHub 首次部署清单](docs/github-setup.zh-CN.md)** · [可直接复制的配置](config/github.example.yaml)
+本项目基于 [TideDra/zotero-arxiv-daily](https://github.com/TideDra/zotero-arxiv-daily) 二次开发，复用 Zotero 读取、arXiv 检索、全文提取、LLM 接口、SMTP 和 GitHub Actions。保留 upstream 历史与 AGPL-3.0 许可证，不重新构建整套系统。
 
-<div align="center">
+[首次部署](docs/github-setup.zh-CN.md) · [完整配置参考](docs/configuration.zh-CN.md) · [配置示例](config/github.example.yaml) · [邮件展开预览](docs/email-preview.html) · [折叠预览](docs/email-preview-collapsible.html)
 
-  [![Status](https://img.shields.io/badge/status-active-success.svg)]()
-  ![Stars](https://img.shields.io/github/stars/TideDra/zotero-arxiv-daily?style=flat)
-  [![GitHub Issues](https://img.shields.io/github/issues/TideDra/zotero-arxiv-daily)](https://github.com/TideDra/zotero-arxiv-daily/issues)
-  [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/TideDra/zotero-arxiv-daily)](https://github.com/TideDra/zotero-arxiv-daily/pulls)
-  [![License](https://img.shields.io/github/license/TideDra/zotero-arxiv-daily)](/LICENSE)
-  [<img src="https://api.gitsponsors.com/api/badge/img?id=893025857" height="20">](https://api.gitsponsors.com/api/badge/link?p=PKMtRut1dWWuC1oFdJweyDSvJg454/GkdIx4IinvBblaX2AY4rQ7FYKAK1ZjApoiNhYEeduIEhfeZVIwoIVlvcwdJXVFD2nV2EE5j6lYXaT/RHrcsQbFl3aKe1F3hliP26OMayXOoZVDidl05wj+yg==)
+## 推荐来源
 
-</div>
+| 类型 | 来源 | 用途 |
+| --- | --- | --- |
+| Recent Interest | arXiv | 新发布、与你最近收藏主题相关的论文 |
+| Related / Catch-up | Semantic Scholar Recommendations | 近期 Zotero 文献作为 seeds，寻找遗漏或经典相关工作 |
+| Explore / Trending | Hugging Face Daily Papers、OpenAlex | 在可配置的主题范围中发现热门论文 |
 
----
+默认示例每天最多 3 篇，优先 2 篇相关 + 1 篇探索；数量、分配和来源上限均可修改。没有合格论文时少发，不降低质量阈值凑数。
 
-<p align="center"> Recommend new arxiv papers of your interest daily according to your Zotero library.
-    <br> 
-</p>
+兴趣来自最近入库文献的标题、摘要、标签和收藏夹路径，按时间衰减加权，使用 TF-IDF/BM25 排序。无需本地 embedding、向量数据库或 GPU。完整 Zotero Library 与当日候选通过 DOI、arXiv ID、Semantic Scholar ID、规范化标题去重；不保存推荐历史，所以没有收藏的论文以后仍可能再次推荐。
 
-> [!IMPORTANT]
-> Please keep an eye on this repo, and merge your forked repo in time when there is any update of this upstream, in order to enjoy new features and fix found bugs.
+## 快速部署
 
-## 🧐 About <a name = "about"></a>
+1. Fork 本仓库，在 Actions 页面启用工作流。
+2. 在 Settings → Secrets and variables → Actions 添加凭据：
 
-> Track new scientific researches of your interest by just forking (and staring) this repo!😊
+| Secret | 说明 |
+| --- | --- |
+| `ZOTERO_ID`、`ZOTERO_KEY` | 个人 Library 数字 ID 与读取权限 Key |
+| `SENDER`、`SENDER_PASSWORD` | 发件邮箱及 SMTP 授权码 / 应用密码 |
+| `RECEIVER` | 收件邮箱 |
+| `OPENAI_API_KEY`、`OPENAI_API_BASE` | LLM 凭据；关闭 LLM 时不需要 |
+| `SEMANTIC_SCHOLAR_API_KEY` | 可选；公开访问可能限流 |
+| `OPENALEX_API_KEY` | 可选；公开访问可能限流或受配额限制 |
 
-*Zotero-arXiv-Daily* finds arxiv papers that may attract you based on the context of your Zotero library, and then sends the result to your mailbox📮. It can be deployed as Github Action Workflow with **zero cost**, **no installation**, and **few configuration** of Github Action environment variables for daily **automatic** delivery.
+3. 创建 Actions **Variable `CUSTOM_CONFIG`**，复制 [完整示例](config/github.example.yaml)。修改 SMTP 地址、端口及 `YOUR_MODEL_NAME`，不要把密钥直接写入 Variable。
+4. 手动运行 **Send emails daily**。这是实际发送任务；`CI` 才是离线测试。
+5. 后续默认北京时间每天 11:00 运行，GitHub 调度可能延迟。
 
-## ✨ Features
-- Totally free! All the calculation can be done in the Github Action runner locally within its quota (for public repo).
-- AI-generated TL;DR for you to quickly pick up target papers.
-- Affiliations of the paper are resolved and presented.
-- Links of PDF and code implementation (if any) presented in the e-mail.
-- List of papers sorted by relevance with your recent research interest.
-- Fast deployment via fork this repo and set environment variables in the Github Action Page.
-- Support LLM API for generating TL;DR of papers.
-- Ignore unwanted Zotero papers using a list of glob patterns.
-- Support multiple sources of papers to retrieve:
-  - arxiv
-  - biorxiv
-  - medrxiv
-  - chemrxiv
+`CUSTOM_CONFIG` 覆盖仓库的 `config/custom.yaml`，再与 `config/base.yaml` 合并。示例偏向 NLP / LLM / 语言 Agent；开源基础配置不限制探索主题，可以自行替换为任何学科。
 
-## 📷 Screenshot
-![screenshot](./assets/screenshot.png)
+## 常用配置
 
-## 🚀 Usage
-### Quick Start
-1. Fork (and star😘) this repo.
-![fork](./assets/fork.png)
+下面展示可调参数；部署时请合并进完整示例，保留 Zotero、SMTP、LLM 凭据引用。
 
-2. Set Github Action environment variables.
-![secrets](./assets/secrets.png)
-
-Below are all the secrets you need to set. They are invisible to anyone including you once they are set, for security.
-
-| Key |Description | Example |
-| :---  | :---  | :--- |
-| ZOTERO_ID  | User ID of your Zotero account. **User ID is not your username, but a sequence of numbers**Get your ID from [here](https://www.zotero.org/settings/security). You can find it at the position shown in this [screenshot](https://github.com/TideDra/zotero-arxiv-daily/blob/main/assets/userid.png). | 12345678  |
-| ZOTERO_KEY | An Zotero API key with read access. Get a key from [here](https://www.zotero.org/settings/security).  | AB5tZ877P2j7Sm2Mragq041H   |
-| SENDER | The email account of the SMTP server that sends you email. | abc@qq.com |
-| SENDER_PASSWORD | The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this.   | abcdefghijklmn |
-| RECEIVER | The e-mail address that receives the paper list. | abc@outlook.com |
-| OPENAI_API_KEY | API Key when using the API to access LLMs. You can get FREE API for using advanced open source LLMs in [SiliconFlow](https://cloud.siliconflow.cn/i/b3XhBRAm). | sk-xxx |
-| OPENAI_API_BASE | API URL when using the API to access LLMs. | https://api.siliconflow.cn/v1 |
-
-Then you should also set a public variable `CUSTOM_CONFIG` for your custom configuration.
-![vars](./assets/repo_var.png)
-![custom_config](./assets/config_var.png)
-Paste the following content into the value of `CUSTOM_CONFIG` variable:
 ```yaml
-zotero:
-  user_id: ${oc.env:ZOTERO_ID}
-  api_key: ${oc.env:ZOTERO_KEY}
-  include_path: null # Or e.g. ["2026/survey/**", "2026/reading-group/**"]
+executor:
+  max_paper_num: 3                # 每日总上限，不在代码中固定为 3
+  source: [arxiv]
+  reranker: bm25
+  send_empty: false
 
-email:
-  sender: ${oc.env:SENDER}
-  receiver: ${oc.env:RECEIVER}
-  smtp_server: smtp.qq.com
-  smtp_port: 465
-  sender_password: ${oc.env:SENDER_PASSWORD}
+recommendation:
+  enabled: true
+  interest_slots: 2              # 先选多少篇相关论文
+  explore_slots: 1               # 最多多少篇探索论文
+  min_interest_for_explore: 2    # 有足够相关论文后才启用探索位；0 表示不限
+  fill_with_interest: true       # 空余总名额是否允许合格相关论文补足
+  source_limits: {}             # 可设 {arxiv: 1, semantic_scholar: 1}
+  source_weights: {}            # 相关来源倒数排名的权重，默认 1；0 表示不选择
+  explore_sources: [huggingface, openalex]
+  explore_include_topics:
+    - natural language processing large language models LLM reasoning RAG language agents tool calling
+  explore_exclude_topics:
+    - computer vision image video generation 3D camera reconstruction robotics
+    - biology medicine molecular protein physics quantum particles
+  explore_focus_min_score: 0.05
+  explore_exclude_min_score: 0.05
+  openalex:
+    fields: [17]                 # Computer Science
 
 llm:
-  api:
-    key: ${oc.env:OPENAI_API_KEY}
-    base_url: ${oc.env:OPENAI_API_BASE}
-  api_mode: chat_completion # Or response to use the Responses API.
-  generation_kwargs:
-    model: gpt-4o-mini
-
-source:
-  arxiv:
-    category: ["cs.AI","cs.CV","cs.LG","cs.CL"]
-    include_cross_list: false # Set to true to include arXiv cross-list papers in these categories.
-
-executor:
-  debug: ${oc.env:DEBUG,null}
-  source: ['arxiv']
-```
-Set `source.arxiv.include_cross_list: true` if you want cross-listed papers included.
->[!NOTE]
-> `${oc.env:XXX,yyy}` means the value of the environment variable `XXX`. If the variable is not set, the default value `yyy` will be used.
-
-Here is the full configuration, `???` means the value must be filled in:
-```yaml
-zotero:
-  user_id: ??? # User ID of your Zotero account.
-  api_key: ??? # An Zotero API key with read access.
-  include_path: null # A list of glob patterns marking the Zotero collections that should be included. Example: ["2026/survey/**", "2026/reading-group/**"]
-
-source:
-  arxiv:
-    category: null # The categories of target arxiv papers. Find the abbr of your research area from [here](https://arxiv.org/category_taxonomy). Example: ["cs.AI","cs.CV","cs.LG","cs.CL"]
-    include_cross_list: false # Whether to include arXiv cross-list papers in subscribed categories. Example: true
-  biorxiv:
-    category: null # The categories of target biorxiv papers. Find categories from [here](https://www.biorxiv.org/). Example: ["biochemistry","animal behavior and cognition"]
-  medrxiv:
-    category: null # The categories of target medrxiv papers. Find categories from [here](https://www.medrxiv.org/) Example: ["psychiatry and clinical psychology", "neurology"]
-  chemrxiv:
-    include_new_versions: false # Whether to include revised versions (v2, v3, ...) of previously posted chemrxiv preprints in addition to new first postings. chemrxiv has no category filter: all new preprints (a few dozen per day) are retrieved via Crossref and left to the reranker. Example: true
+  enabled: true                  # false：摘要原文，不调用 LLM
+  language: Chinese              # TLDR 语言
+  reading_notes:
+    enabled: true                # false：只生成 TLDR，不生成详细笔记
+    language: Chinese
 
 email:
-  sender: ??? # The email account of the SMTP server that sends you email. Example: abc@qq.com
-  receiver: ??? # The email account that receives the paper list. Example: abc@outlook.com
-  smtp_server: ??? # The SMTP server that sends the email. Ask your email provider (Gmail, QQ, Outlook, ...) for its SMTP server. Example: smtp.qq.com
-  smtp_port: ??? # The port of SMTP server. Example: 465
-  sender_password: ??? # The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this. Example: abcdefghijklmn
-
-llm:
-  api:
-    key: ??? # API Key of your LLM API. Example: sk-xxx
-    base_url: ??? # API URL of your LLM API. Example: https://api.openai.com/v1
-  api_mode: chat_completion # The LLM API to use. Options: chat_completion or response.
-  generation_kwargs:
-  # Arguments for the selected LLM API.
-    max_tokens: 16384
-    model: ???
-  language: English # Preferred language for the TL;DR. Example: English
-
-reranker:
-  local:
-    model: jinaai/jina-embeddings-v5-text-nano # The Hugging Face model name of the local embedding model. Example: jinaai/jina-embeddings-v5-text-nano
-    encode_kwargs:
-    # The kwargs for the encode method of the local embedding model. Details see [here](https://www.sbert.net/docs/package_reference/SentenceTransformer.html#sentence_transformers.SentenceTransformer.encode)
-      task: retrieval
-      prompt_name: document
-  api:
-    key: null # API Key of your embedding model API. Example: sk-xxx
-    base_url: null # API URL of your embedding model API. Example: https://api.openai.com/v1
-    model: null # The model name of the embedding model. Example: text-embedding-3-large
-    batch_size: null # The batch size for embedding API requests. Adjust to match your provider's limit. Example: 64
-
-executor:
-  debug: false # Whether to use debug mode. Example: true
-  send_empty: false # Whether to send an empty email even if no new papers today. Example: true
-  max_paper_num: 100 # The maximum number of the papers presented in the email. Example: 100
-  source: ??? # The sources of papers to retrieve. Example: ['arxiv','biorxiv','medrxiv','chemrxiv']
-  reranker: local # The reranker to use. Example: 'local' or 'api'
+  sender_name: Daily Paper
+  subject_prefix: Daily Paper
+  max_width: 1120                # 桌面最大宽度；窄屏自动收缩
+  notes_collapsible: true        # 支持的邮箱可展开 / 收起；false 使用展开排版
 ```
 
-That's all! Now you can test the workflow by manually triggering it:
-![test](./assets/test.png)
+主题筛选使用词频/逆文档频率加权与一、二元词组的 TF-IDF 相似度，不是字符串包含匹配，也不调用 LLM。排除主题相似度达到阈值、且不低于包含主题时拒绝候选。这是可解释的文本筛选，不保证所有交叉学科论文都能准确分类。探索仍需通过热度和质量门槛；没有合适探索论文不会用 CV 论文补位。
 
-> [!NOTE]
-> The Test-Workflow Action is the debug version of the main workflow (Send-emails-daily), which always retrieve 5 arxiv papers regardless of the date. While the main workflow will be automatically triggered everyday and retrieve new papers released yesterday. There is no new arxiv paper at weekends and holiday, in which case you may see "No new papers found" in the log of main workflow.
+## 中文读书笔记
 
-Then check the log and the receiver email after it finishes.
+只对最终入选论文读取可访问全文，再调用现有兼容 Chat Completions / Responses 的 LLM 接口。笔记包含五部分：
 
-By default, the main workflow runs on 22:00 UTC everyday. You can change this time by editting the workflow config `.github/workflows/main.yml`.
+1. 研究问题与背景。
+2. 核心贡献与已有工作的区别。
+3. 方法原理与关键公式 / 算法。
+4. 实验设置、主要结果与证据。
+5. 局限性与未解决的问题。
 
-### Local Running
-Supported by [uv](https://github.com/astral-sh/uv), this workflow can easily run on your local device if uv is installed:
+不包含“与你研究的联系”。长文分段提取证据再汇总；超出预算会均匀抽样并标注覆盖范围。拿不到全文时明确写“仅依据摘要”，不伪装成全文阅读。笔记失败时继续发送 TLDR 或摘要。LLM 费用由服务商决定。
+
+邮件是表格布局 + 内联样式的 HTML，支持窄屏适配。折叠是发送前生成内容的展示交互，不是点击后请求 LLM。不同邮箱对 HTML 交互的支持不同，推荐先测试自己的客户端。
+
+## 运行、缓存与模型依赖
+
 ```bash
-# set all the environment variables
-# export ZOTERO_ID=xxxx
-# ...
-cd zotero-arxiv-daily
-uv run main.py
+uv run --no-dev src/zotero_arxiv_daily/main.py
+uv run pytest
 ```
 
-## 🚀 Sync with the latest version
-This project is in active development. You can subscribe this repo via `Watch` so that you can be notified once we publish new release.
+生产 Actions 使用 `--locked --no-dev`，显式启用基于 `uv.lock` 的 uv 依赖缓存，不安装开发环境。首次需要下载依赖，缓存命中可减少后续下载；每次 runner 仍会启动新进程。
 
-![Watch](./assets/subscribe_release.png)
+默认依赖不含 PyTorch、sentence-transformers、peft。BM25 启动不会导入 embedding、PDF 布局或 ONNX 模型。PDF 布局提取按需在入选论文的提取子进程中启动；这不是用于排序的 embedding 模型。
 
+保留 upstream 的可选 embedding 排序模式：
 
-## 📖 How it works
-*Zotero-arXiv-Daily* firstly retrieves all the papers in your Zotero library and all the papers released in the previous day, via corresponding API. Then it calculates the embedding of each paper's abstract via an embedding model. The score of a paper is its weighted average similarity over all your Zotero papers (newer paper added to the library has higher weight). The TLDR of each paper is generated by LLM, given the text extracted by pymupdf4llm.
+```bash
+uv run --extra embeddings src/zotero_arxiv_daily/main.py recommendation.enabled=false executor.reranker=local
+```
 
-## 📌 Limitations
-- The recommendation algorithm is very simple, it may not accurately reflect your interest. Welcome better ideas for improving the algorithm!
-- High `MAX_PAPER_NUM` can lead the execution time exceed the limitation of Github Action runner (6h per execution for public repo, and 2000 mins per month for private repo). Commonly, the quota given to public repo is definitely enough for individual use. If you have special requirements, you can deploy the workflow in your own server, or use a self-hosted Github Action runner, or pay for the exceeded execution time.
+Actions 中另设 Variable `INSTALL_EMBEDDINGS=true` 安装可选依赖；同时设置上述两个配置项，才会切到 upstream 模式。该模式不应用精选模块的多来源分配策略。模型权重单独缓存，`EMBEDDING_CACHE_VERSION` 可用于更换模型后刷新缓存。缓存只避免重新下载，不能省掉模型加载与 CPU 推理；小模型可在 CPU 运行，效果和耗时需实测。
 
+## 模块与扩展
 
-## 📃 License
-Distributed under the AGPLv3 License. See `LICENSE` for detail.
+- `discovery/`：Semantic Scholar、Hugging Face、OpenAlex 独立适配器，共享 HTTP 超时/重试。
+- `recommendation.py`：近期兴趣、BM25、主题筛选、跨来源去重与可配置分配。
+- `reading_notes.py`：全文读取、分段证据提取与五部分笔记。
+- `construct_email.py`：邮件 HTML；`utils.py` 复用 SMTP 与文件解析。
+- `config/base.yaml`：公共默认值；`config/github.example.yaml`：可直接复制的部署示例。
 
-## ❤️ Acknowledgement
-- [pyzotero](https://github.com/urschrei/pyzotero)
-- [arxiv](https://github.com/lukasschwab/arxiv.py)
-- [sentence_transformers](https://github.com/UKPLab/sentence-transformers)
+新发现来源实现 `retrieve(profile, config) -> list[Paper]`，在 `discovery/__init__.py` 加入调度并定义配置。将来源名加入 `explore_sources` 可归入探索池。各来源可独立禁用，API 失败不会阻断其他来源。修改领域、名额、主题和 LLM 开关无需改 Python。
 
-## ☕ Buy Me A Coffee
-If you find this project helpful, welcome to sponsor me via WeChat or via [ko-fi](https://ko-fi.com/tidedra).
-![wechat_qr](assets/wechat_sponsor.JPG)
+## 测试与已知边界
 
+测试使用 stub，不连接私人 Library，不发真实邮件；默认跳过下载本地 embedding 模型的 slow 测试。覆盖名额分配、去重、近期权重、自定义主题、API 降级、笔记覆盖范围和邮件渲染。
 
-## 🌟 Star History
+- 没有推荐历史库，也不会自动将论文写入 Zotero。
+- 目前面向英文论文元数据，未实现中文分词。
+- OpenAlex 热度是近期引用表现代理，不是真实引用增长率。
+- 邮件发送成功表示 SMTP 接受，不保证收件箱位置或客户端交互兼容。
+- API 返回 model_not_found 时，检查服务商实际可用模型 ID；任务可以成功发送降级摘要，但笔记并未生成。
 
-[![Star History Chart](https://api.star-history.com/svg?repos=TideDra/zotero-arxiv-daily&type=Date)](https://star-history.com/#TideDra/zotero-arxiv-daily&Date)
+## 致谢与许可证
+
+感谢 [TideDra/zotero-arxiv-daily](https://github.com/TideDra/zotero-arxiv-daily) 提供上游实现。本分支沿用 [AGPL-3.0](LICENSE)，保留原有历史和相关声明。模型、API 和论文内容另受其各自条款约束。
