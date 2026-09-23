@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, TypeVar
 from datetime import datetime
 import re
@@ -48,6 +48,18 @@ class Paper:
     tldr: Optional[str] = None
     affiliations: Optional[list[str]] = None
     score: Optional[float] = None
+    doi: Optional[str] = None
+    arxiv_id: Optional[str] = None
+    semantic_scholar_id: Optional[str] = None
+    published_date: Optional[datetime] = None
+    citation_count: int = 0
+    source_rank: int = 0
+    popularity: float = 0
+    recommendation_type: Optional[str] = None
+    recommendation_reason: Optional[str] = None
+    reading_notes: Optional[dict[str, str]] = None
+    reading_notes_basis: Optional[str] = None
+    reading_notes_status: Optional[str] = None
 
     def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
         lang = llm_params.get('language', 'English')
@@ -137,3 +149,8 @@ class CorpusPaper:
     abstract: str
     added_date: datetime
     paths: list[str]
+    tags: list[str] = field(default_factory=list)
+    doi: Optional[str] = None
+    arxiv_id: Optional[str] = None
+    semantic_scholar_id: Optional[str] = None
+    url: str = ""

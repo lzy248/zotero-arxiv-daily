@@ -5,6 +5,11 @@
 
 <h3 align="center">Zotero-arXiv-Daily</h3>
 
+> 本分支新增每日 2–3 篇精选：近期 Zotero 兴趣 BM25 排序、Semantic Scholar 相关论文、
+> Hugging Face / OpenAlex 探索来源，复用 upstream 邮件与 Actions。
+> **[配置、算法与模块说明](docs/curated-recommendations.zh-CN.md)**（部署时请更新 `CUSTOM_CONFIG`）。
+> **[GitHub 首次部署清单](docs/github-setup.zh-CN.md)** · [可直接复制的配置](config/github.example.yaml)
+
 <div align="center">
 
   [![Status](https://img.shields.io/badge/status-active-success.svg)]()

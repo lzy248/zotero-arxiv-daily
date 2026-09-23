@@ -6,6 +6,7 @@ zotero:
 
 source:
   arxiv:
+    fetch_full_text: true # Set false for lightweight metadata-only recommendations.
     category: null # The categories of target arxiv papers. Find the abbr of your research area from [here](https://arxiv.org/category_taxonomy). Example: ["cs.AI","cs.CV","cs.LG","cs.CL"]
     include_cross_list: false # Whether to include arXiv cross-list papers in subscribed categories. Example: true
   biorxiv:
@@ -16,6 +17,7 @@ source:
     include_new_versions: false # Whether to include revised versions (v2, v3, ...) of previously posted chemrxiv preprints in addition to new first postings. chemrxiv has no category filter: all new preprints (a few dozen per day) are retrieved via Crossref and left to the reranker. Example: true
 
 email:
+  notes_collapsible: false # Most compatible: inline notes. true enables native details/summary.
   sender: ??? # The email account of the SMTP server that sends you email. Example: abc@qq.com
   receiver: ??? # The email account that receives the paper list. Example: abc@outlook.com
   smtp_server: ??? # The SMTP server that sends the email. Ask your email provider (Gmail, QQ, Outlook, ...) for its SMTP server. Example: smtp.qq.com
@@ -23,6 +25,14 @@ email:
   sender_password: ??? # The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this. Example: abcdefghijklmn
 
 llm:
+  reading_notes:
+    enabled: false
+    language: Chinese
+    chunk_tokens: 8000
+    max_chunks: 6
+    max_output_tokens: 3500
+    extraction_timeout: 90 # Per extraction attempt, seconds.
+  enabled: true # Disable to use the original abstract without any LLM credentials.
   api:
     key: ??? # API Key of your LLM API. Example: sk-xxx
     base_url: ??? # API URL of your LLM API. Example: https://api.openai.com/v1
@@ -52,3 +62,31 @@ executor:
   max_paper_num: 100 # The maximum number of the papers presented in the email. Example: 100
   source: ??? # The sources of papers to retrieve. Example: ['arxiv','biorxiv','medrxiv','chemrxiv']
   reranker: local # The reranker to use. Example: 'local' or 'api'
+
+# Opt-in extension. Keeping it disabled preserves upstream ranking behavior.
+recommendation:
+  enabled: false
+  recent_limit: 100
+  half_life_days: 60
+  query_terms: 80
+  min_matched_terms: 3
+  min_relevance: 0.06 # Normalized BM25 score, not a probability or quality guarantee.
+  interest_slots: 2
+  explore_max_relevance: 0.15
+  semantic_scholar:
+    enabled: true
+    api_key: ${oc.env:SEMANTIC_SCHOLAR_API_KEY,null}
+    seed_limit: 5
+    limit: 30
+  huggingface:
+    enabled: true
+    period: weekly # daily, weekly, monthly
+    limit: 20
+    min_upvotes: 5
+  openalex:
+    enabled: true
+    api_key: ${oc.env:OPENALEX_API_KEY,null}
+    fields: [17, 31, 13, 27, 22] # CS, Physics, Biology, Medicine, Engineering
+    lookback_days: 180
+    min_citations: 5
+    limit: 20

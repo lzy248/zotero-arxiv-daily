@@ -17,3 +17,6 @@ models
 test-compose.yml
 outputs
 config/private.yaml
+.tools/
+uv-tools.zip
+.pytest_cache/

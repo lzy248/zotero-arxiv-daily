@@ -24,6 +24,10 @@ def _base_config():
         cfg = compose(
             config_name="default",
             overrides=[
+                "recommendation.enabled=false",
+                "llm.enabled=true",
+                "llm.reading_notes.enabled=false",
+                "source.arxiv.fetch_full_text=true",
                 "zotero.user_id=000000",
                 "zotero.api_key=fake-zotero-key",
                 "zotero.include_path=null",

@@ -1,0 +1,41 @@
+# Copy this file into the GitHub Actions variable CUSTOM_CONFIG.
+# Put actual credentials in Actions secrets, never in this public file.
+zotero:
+  user_id: ${oc.env:ZOTERO_ID}
+  api_key: ${oc.env:ZOTERO_KEY}
+
+email:
+  sender: ${oc.env:SENDER}
+  receiver: ${oc.env:RECEIVER}
+  sender_password: ${oc.env:SENDER_PASSWORD}
+  smtp_server: smtp.qq.com # Change for your email provider.
+  smtp_port: 465
+  notes_collapsible: false # true: optional native HTML disclosure.
+
+llm:
+  enabled: true
+  api:
+    key: ${oc.env:OPENAI_API_KEY}
+    base_url: ${oc.env:OPENAI_API_BASE}
+  api_mode: chat_completion
+  language: Chinese
+  generation_kwargs:
+    model: YOUR_MODEL_NAME # Replace with your provider's model identifier.
+    max_tokens: 3500
+  reading_notes:
+    enabled: true
+    language: Chinese
+
+source:
+  arxiv:
+    category: [cs.AI, cs.CV, cs.LG, cs.CL]
+    fetch_full_text: false # Notes fetch full text only after final selection.
+
+executor:
+  source: [arxiv]
+  reranker: bm25
+  max_paper_num: 3
+  send_empty: false
+
+recommendation:
+  enabled: true

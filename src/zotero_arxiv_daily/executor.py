@@ -11,6 +11,9 @@ from .construct_email import render_email
 from .utils import send_email
 from openai import OpenAI
 from tqdm import tqdm
+from .recommendation import InterestProfile, select_daily, normalize_doi, normalize_s2, zotero_arxiv_id
+from .discovery import discover
+from .reading_notes import generate_reading_notes
 
 
 def normalize_path_patterns(patterns: list[str] | ListConfig | None, config_key: str) -> list[str] | None:
@@ -38,28 +41,39 @@ class Executor:
             source: get_retriever_cls(source)(config) for source in config.executor.source
         }
         self.reranker = get_reranker_cls(config.executor.reranker)(config)
-        self.openai_client = OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url)
+        self.curated = config.get('recommendation', {}).get('enabled', False)
+        if self.curated and config.executor.reranker != 'bm25':
+            raise ValueError('Curated recommendations require executor.reranker=bm25')
+        self.openai_client = (OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url)
+                              if config.llm.get('enabled', True) else None)
     def fetch_zotero_corpus(self) -> list[CorpusPaper]:
         logger.info("Fetching zotero corpus")
         zot = zotero.Zotero(self.config.zotero.user_id, 'user', self.config.zotero.api_key)
         collections = zot.everything(zot.collections())
         collections = {c['key']:c for c in collections}
-        corpus = zot.everything(zot.items(itemType='conferencePaper || journalArticle || preprint'))
-        corpus = [c for c in corpus if c['data']['abstractNote'] != '']
+        # Keep all bibliographic items for deduplication, even without abstracts.
+        corpus = zot.everything(zot.items(itemType='-attachment || note || annotation'))
+        corpus = [c for c in corpus if c['data'].get('title')]
         def get_collection_path(col_key:str) -> str:
             if p := collections[col_key]['data']['parentCollection']:
                 return get_collection_path(p) + '/' + collections[col_key]['data']['name']
             else:
                 return collections[col_key]['data']['name']
         for c in corpus:
-            paths = [get_collection_path(col) for col in c['data']['collections']]
+            paths = [get_collection_path(col) for col in c['data'].get('collections', []) if col in collections]
             c['paths'] = paths
         logger.info(f"Fetched {len(corpus)} zotero papers")
         return [CorpusPaper(
             title=c['data']['title'],
-            abstract=c['data']['abstractNote'],
+            abstract=c['data'].get('abstractNote', ''),
             added_date=datetime.strptime(c['data']['dateAdded'], '%Y-%m-%dT%H:%M:%SZ'),
-            paths=c['paths']
+            paths=c['paths'],
+            tags=[tag['tag'] for tag in c['data'].get('tags', []) if tag.get('tag')],
+            doi=normalize_doi(c['data'].get('DOI')) or normalize_doi(c['data'].get('extra'))
+                or normalize_doi(c['data'].get('url')),
+            arxiv_id=zotero_arxiv_id(c['data']),
+            url=c['data'].get('url', ''),
+            semantic_scholar_id=normalize_s2(c['data'].get('url')) or normalize_s2(c['data'].get('extra')),
         ) for c in corpus]
     
     def filter_corpus(self, corpus:list[CorpusPaper]) -> list[CorpusPaper]:
@@ -91,15 +105,21 @@ class Executor:
 
     
     def run(self):
-        corpus = self.fetch_zotero_corpus()
-        corpus = self.filter_corpus(corpus)
+        library = self.fetch_zotero_corpus()
+        corpus = self.filter_corpus(library)
         if len(corpus) == 0:
-            logger.error(f"No zotero papers found. Please check your zotero settings:\n{self.config.zotero}")
+            logger.error("No zotero papers found. Please check your zotero settings.")
             return
         all_papers = []
         for source, retriever in self.retrievers.items():
             logger.info(f"Retrieving {source} papers...")
-            papers = retriever.retrieve_papers()
+            try:
+                papers = retriever.retrieve_papers()
+            except Exception as exc:
+                if not self.curated:
+                    raise
+                logger.warning("Source {} unavailable ({})", source, type(exc).__name__)
+                continue
             if len(papers) == 0:
                 logger.info(f"No {source} papers found")
                 continue
@@ -107,18 +127,29 @@ class Executor:
             all_papers.extend(papers)
         logger.info(f"Total {len(all_papers)} papers retrieved from all sources")
         reranked_papers = []
-        if len(all_papers) > 0:
+        if self.curated:
+            profile = InterestProfile(corpus, self.config.recommendation)
+            all_papers.extend(discover(profile, self.config.recommendation))
+            reranked_papers = select_daily(all_papers, library, profile, self.config.recommendation,
+                                           self.config.executor.max_paper_num)
+        elif len(all_papers) > 0:
             logger.info("Reranking papers...")
             reranked_papers = self.reranker.rerank(all_papers, corpus)
             reranked_papers = reranked_papers[:self.config.executor.max_paper_num]
-            logger.info("Generating TLDR and affiliations...")
-            for p in tqdm(reranked_papers):
+        if not reranked_papers and not self.config.executor.send_empty:
+            logger.info("No qualifying new papers found. No email will be sent.")
+            return
+        logger.info("Preparing summaries...")
+        for p in tqdm(reranked_papers):
+            if self.openai_client is not None:
+                notes_config = self.config.llm.get('reading_notes', {})
+                if notes_config.get('enabled', False):
+                    generate_reading_notes(p, self.openai_client, self.config.llm, notes_config)
                 p.generate_tldr(self.openai_client, self.config.llm)
                 p.generate_affiliations(self.openai_client, self.config.llm)
-        elif not self.config.executor.send_empty:
-            logger.info("No new papers found. No email will be sent.")
-            return
+            else:
+                p.tldr = p.abstract or 'Abstract unavailable; follow the paper link for details.'
         logger.info("Sending email...")
-        email_content = render_email(reranked_papers)
+        email_content = render_email(reranked_papers, collapsible=self.config.email.get('notes_collapsible', False))
         send_email(self.config, email_content)
         logger.info("Email sent successfully")

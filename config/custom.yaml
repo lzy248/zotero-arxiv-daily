@@ -11,6 +11,9 @@ email:
   sender_password: ${oc.env:SENDER_PASSWORD}
 
 llm:
+  enabled: false
+  reading_notes:
+    enabled: true # Runs automatically after selection when llm.enabled is true.
   api:
     key: ${oc.env:OPENAI_API_KEY}
     base_url: ${oc.env:OPENAI_API_BASE}
@@ -20,8 +23,14 @@ llm:
 
 source:
   arxiv:
+    fetch_full_text: false # Abstracts suffice for ranking and optional TLDR.
     category: ["cs.AI","cs.CV","cs.LG","cs.CL"]
 
 executor:
+  reranker: bm25
+  max_paper_num: 3
   debug: ${oc.env:DEBUG,null}
   source: ['arxiv']
+
+recommendation:
+  enabled: true
