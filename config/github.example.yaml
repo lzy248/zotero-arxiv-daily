@@ -10,7 +10,7 @@ email:
   sender_password: ${oc.env:SENDER_PASSWORD}
   smtp_server: smtp.qq.com # Change for your email provider.
   smtp_port: 465
-  notes_collapsible: false # true: optional native HTML disclosure.
+  notes_collapsible: true # Native HTML disclosure; support varies by email client.
 
 llm:
   enabled: true
@@ -28,7 +28,7 @@ llm:
 
 source:
   arxiv:
-    category: [cs.AI, cs.CV, cs.LG, cs.CL]
+    category: [cs.AI, cs.LG, cs.CL, cs.CV, cs.IR, cs.NE, cs.MA, cs.RO, cs.SE, cs.DB, cs.DS, cs.DC, cs.CR]
     fetch_full_text: false # Notes fetch full text only after final selection.
 
 executor:
@@ -39,3 +39,5 @@ executor:
 
 recommendation:
   enabled: true
+  openalex:
+    fields: [17] # Computer Science only.

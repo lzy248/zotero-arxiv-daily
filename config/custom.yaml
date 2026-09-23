@@ -4,6 +4,7 @@ zotero:
   include_path: null # Or set a list of glob patterns, e.g. ["2026/survey/**","2026/reading-group/**"]
 
 email:
+  notes_collapsible: true
   sender: ${oc.env:SENDER}
   receiver: ${oc.env:RECEIVER}
   smtp_server: smtp.qq.com
@@ -24,7 +25,7 @@ llm:
 source:
   arxiv:
     fetch_full_text: false # Abstracts suffice for ranking and optional TLDR.
-    category: ["cs.AI","cs.CV","cs.LG","cs.CL"]
+    category: [cs.AI, cs.LG, cs.CL, cs.CV, cs.IR, cs.NE, cs.MA, cs.RO, cs.SE, cs.DB, cs.DS, cs.DC, cs.CR]
 
 executor:
   reranker: bm25
@@ -34,3 +35,5 @@ executor:
 
 recommendation:
   enabled: true
+  openalex:
+    fields: [17] # Computer Science only; no Biology, Physics or Medicine rotation.

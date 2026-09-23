@@ -27,8 +27,10 @@ Zotero 的 ID 和 key 在 https://www.zotero.org/settings/keys 获取。
 
 - `email.smtp_server` 与 `smtp_port`：示例为 QQ 邮箱 `smtp.qq.com:465`，其他邮箱按服务商设置。
 - `llm.generation_kwargs.model`：将 `YOUR_MODEL_NAME` 替换为实际模型 ID。
-- `source.arxiv.category`：按研究领域调整，默认 AI/CV/LG/CL。
-- `email.notes_collapsible`：默认 `false` 兼容性更好，设为 `true` 尝试折叠展示。
+- `source.arxiv.category`：当前关注 AI、机器学习、语言、视觉、检索、神经计算、多智能体、
+  机器人，以及软件工程、数据库、算法、分布式系统、安全等计算机分类。
+- `recommendation.openalex.fields`：当前仅 `[17]`（Computer Science），不轮换生物、医学、物理。
+- `email.notes_collapsible`：当前为 `true`；若邮箱不支持折叠，可改为 `false` 使用展开排版。
 
 示例启用中文 TLDR 与五部分读书笔记。Secrets 引用 `${oc.env:...}` 原样保留。
 LLM 需有可用额度；若暂不准备 LLM，则设置 `llm.enabled: false`，仍可推荐并发送论文摘要。
