@@ -151,7 +151,7 @@ OpenAlex field ID：17 计算机，31 物理，13 生物化学/遗传/分子生�
 
 手机窄屏通过媒体查询缩小边距；客户端忽略样式时仍保留百分比宽度。
 定时在 `.github/workflows/main.yml` 的 cron 中配置；GitHub cron 不支持从 Variable
-动态插入。当前 `0 3 * * *` 即北京时间每天 11:00，可能有平台调度延迟。
+动态插入。当前 `11 3 * * *` 即北京时间每天 11:11，可能有平台调度延迟。
 
 Actions Variables 除 `CUSTOM_CONFIG` 外：
 

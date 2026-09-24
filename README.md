@@ -34,7 +34,7 @@
 
 3. 创建 Actions **Variable `CUSTOM_CONFIG`**，复制 [完整示例](config/github.example.yaml)。修改 SMTP 地址、端口及 `YOUR_MODEL_NAME`，不要把密钥直接写入 Variable。
 4. 手动运行 **Send emails daily**。这是实际发送任务；`CI` 才是离线测试。
-5. 后续默认北京时间每天 11:00 运行，GitHub 调度可能延迟。
+5. 后续默认北京时间每天 11:11 运行，GitHub 调度可能延迟。
 
 `CUSTOM_CONFIG` 覆盖仓库的 `config/custom.yaml`，再与 `config/base.yaml` 合并。示例偏向 NLP / LLM / 语言 Agent；开源基础配置不限制探索主题，可以自行替换为任何学科。
 
