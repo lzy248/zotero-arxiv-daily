@@ -32,7 +32,7 @@ source:
     category: [cs.AI, cs.LG, cs.CL, cs.CV, cs.IR, cs.NE, cs.MA, cs.RO, cs.SE, cs.DB, cs.DS, cs.DC, cs.CR]
 
 executor:
-  reranker: bm25
+  reranker: local
   max_paper_num: 3
   debug: ${oc.env:DEBUG,null}
   source: ['arxiv']

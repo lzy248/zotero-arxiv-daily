@@ -157,3 +157,12 @@ def test_negative_quota_rejected(config):
     config.recommendation.explore_slots = -1
     with pytest.raises(ValueError, match='nonnegative integers'):
         select_daily([], [], profile, config.recommendation)
+
+
+def test_embedding_uses_separate_threshold_without_bm25_gate(config):
+    profile = InterestProfile([corpus()], config.recommendation, NOW)
+    high = paper('Semantic similarity high')
+    low = paper('Semantic similarity low')
+    selected = select_daily([low, high], [], profile, config.recommendation,
+                            embedding_scores={id(high): 7.0, id(low): 1.0})
+    assert selected == [high] and high.score == 7.0

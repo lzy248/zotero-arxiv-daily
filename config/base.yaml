@@ -85,6 +85,8 @@ recommendation:
   query_terms: 80
   min_matched_terms: 3
   min_relevance: 0.06 # Normalized BM25 score, not a probability or quality guarantee.
+  embedding_sources: [arxiv] # Only these sources use executor.reranker local/api in curated mode.
+  embedding_min_relevance: 3.0 # Upstream weighted cosine * 10; separate from BM25 threshold.
   interest_slots: 2
   explore_slots: 1
   min_interest_for_explore: 2

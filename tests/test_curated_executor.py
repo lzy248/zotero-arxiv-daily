@@ -75,3 +75,33 @@ def test_email_escapes_external_metadata_and_uses_landing_page():
     html = render_email([p])
     assert '<script>' not in html and '&lt;unsafe&gt;' in html
     assert '>Paper</a>' in html and 'href="https://example.org/paper"' in html
+
+
+def test_embedding_only_scores_arxiv_and_preserves_curated_pipeline(config, monkeypatch):
+    configure(config)
+    config.executor.reranker = 'local'
+    from zotero_arxiv_daily.reranker.local import LocalReranker
+    from zotero_arxiv_daily.retriever.base import registered_retrievers
+    recent = corpus()
+    recent.added_date = datetime.now()
+    candidate = paper('Semantic match without shared keywords')
+    calls = []
+    def rerank(self, candidates, library):
+        calls.append((candidates, library))
+        assert all(p.source == 'arxiv' for p in candidates)
+        for p in candidates:
+            p.score = 7.0
+        return candidates
+    monkeypatch.setattr(LocalReranker, 'rerank', rerank)
+    monkeypatch.setattr(Executor, 'fetch_zotero_corpus', lambda self: [recent])
+    monkeypatch.setattr(registered_retrievers['arxiv'], 'retrieve_papers', lambda self: [candidate])
+    monkeypatch.setattr('zotero_arxiv_daily.executor.discover', lambda *args: [
+        paper('Classic dense retrieval neural ranking', 'semantic_scholar'),
+        paper('Protein folding dynamics', 'openalex', popularity=1)])
+    sent = []
+    monkeypatch.setattr('zotero_arxiv_daily.executor.send_email', lambda config, html: sent.append(html))
+    Executor(config).run()
+    assert len(calls) == 1 and len(sent) == 1
+    assert 'Semantic match without shared keywords' in sent[0]
+    assert 'embedding similarity' in sent[0]
+    assert 'Related / Catch-up' in sent[0] and 'Explore / Trending' in sent[0]

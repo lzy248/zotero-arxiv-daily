@@ -188,19 +188,20 @@ def focused_explore_candidates(candidates, config):
     return selected
 
 
-def select_daily(candidates, library, profile, config, max_papers=3):
+def select_daily(candidates, library, profile, config, max_papers=3, embedding_scores=None):
     related, explore = [], []
     explore_sources = list(config.get('explore_sources', ['huggingface', 'openalex']))
     focused = focused_explore_candidates(
         [p for p in candidates if p.source in explore_sources], config)
     for paper in candidates:
-        relevance = profile.score(paper)
+        embedding_score = (embedding_scores or {}).get(id(paper))
+        relevance = profile.score(paper) if embedding_score is None else embedding_score
         paper.score = relevance
         if paper.source in explore_sources:
             if id(paper) in focused and paper.popularity > 0 and relevance <= config.explore_max_relevance:
                 paper.recommendation_type = "Explore / Trending"
                 explore.append(paper)
-        elif relevance >= config.min_relevance:
+        elif relevance >= (config.get('embedding_min_relevance', 3.0) if embedding_score is not None else config.min_relevance):
             if paper.source == "semantic_scholar":
                 # Provider rank dominates the small relevance/citation tie-breaker.
                 paper.score = (.8 / (1 + .05 * paper.source_rank) + .15 * relevance
@@ -209,7 +210,8 @@ def select_daily(candidates, library, profile, config, max_papers=3):
                 paper.recommendation_reason = "Semantic Scholar recommendation from recent Zotero seeds"
             else:
                 paper.recommendation_type = "Recent Interest"
-                paper.recommendation_reason = "New paper matching your recent Zotero topics (BM25)"
+                method = 'embedding similarity' if embedding_score is not None else 'BM25'
+                paper.recommendation_reason = f"New paper matching your recent Zotero topics ({method})"
             related.append(paper)
     # Merge the two relevance rankings with reciprocal ranks, avoiding incomparable scales.
     merged = []

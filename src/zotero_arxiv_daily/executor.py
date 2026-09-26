@@ -42,8 +42,8 @@ class Executor:
         }
         self.reranker = get_reranker_cls(config.executor.reranker)(config)
         self.curated = config.get('recommendation', {}).get('enabled', False)
-        if self.curated and config.executor.reranker != 'bm25':
-            raise ValueError('Curated recommendations require executor.reranker=bm25')
+        if self.curated and config.executor.reranker not in ('bm25', 'local', 'api'):
+            raise ValueError('Curated recommendations require bm25, local or api reranker')
         self.openai_client = (OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url,
                                     timeout=config.llm.api.get('timeout', 90),
                                     max_retries=config.llm.api.get('max_retries', 2))
@@ -132,8 +132,19 @@ class Executor:
         if self.curated:
             profile = InterestProfile(corpus, self.config.recommendation)
             all_papers.extend(discover(profile, self.config.recommendation))
+            embedding_scores = {}
+            if self.config.executor.reranker != 'bm25':
+                sources = self.config.recommendation.get('embedding_sources', ['arxiv'])
+                candidates = [p for p in all_papers if p.source in sources]
+                if candidates:
+                    embedding_corpus = [p for p in corpus if p.abstract and p.abstract.strip()]
+                    if not embedding_corpus:
+                        raise ValueError('Embedding ranking requires Zotero papers with abstracts')
+                    logger.info('Embedding reranking {} candidates from {}', len(candidates), list(sources))
+                    ranked = self.reranker.rerank(candidates, embedding_corpus)
+                    embedding_scores = {id(p): float(p.score) for p in ranked}
             reranked_papers = select_daily(all_papers, library, profile, self.config.recommendation,
-                                           self.config.executor.max_paper_num)
+                                           self.config.executor.max_paper_num, embedding_scores=embedding_scores)
         elif len(all_papers) > 0:
             logger.info("Reranking papers...")
             reranked_papers = self.reranker.rerank(all_papers, corpus)

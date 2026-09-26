@@ -56,6 +56,18 @@ recommendation:
 
 ## 主题与兴趣
 
+相关性引擎由 `executor.reranker` 选择：`bm25`（无模型）、`local`（upstream 本地 embedding）、
+`api`（upstream embedding API）。这三种均可与 `recommendation.enabled: true` 的精选流程配合。
+本地 embedding 需要 Actions Variable `INSTALL_EMBEDDINGS=true`，或本地命令加 `--extra embeddings`。
+
+- `recommendation.embedding_sources: [arxiv]`：默认仅替换 arXiv 候选打分。
+- `recommendation.embedding_min_relevance: 3.0`：独立阈值，分数为 upstream 近期入库加权余弦相似度 × 10；不是概率，不与 BM25 门槛混用。
+- `reranker.local.model` / `encode_kwargs`：沿用 upstream 的模型与编码参数。
+
+embedding 使用 Zotero 摘要和原始近期入库排名衰减公式，不对候选再做 BM25 必须命中的限制。
+没有摘要的 Zotero 条目仍参与全库去重，但不参与 embedding 语料。
+Semantic Scholar、Hugging Face、OpenAlex 不会改用本地模型召回，仍按原有接口和精选策略处理。
+
 | 参数 | 默认值 | 含义 |
 | --- | --- | --- |
 | `recommendation.recent_limit` | 100 | 最近多少篇 Zotero 文献参与兴趣提取 |

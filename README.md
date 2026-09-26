@@ -112,10 +112,19 @@ uv run pytest
 保留 upstream 的可选 embedding 排序模式：
 
 ```bash
-uv run --extra embeddings src/zotero_arxiv_daily/main.py recommendation.enabled=false executor.reranker=local
+uv run --extra embeddings src/zotero_arxiv_daily/main.py executor.reranker=local
 ```
 
-Actions 中另设 Variable `INSTALL_EMBEDDINGS=true` 安装可选依赖；同时设置上述两个配置项，才会切到 upstream 模式。该模式不应用精选模块的多来源分配策略。模型权重单独缓存，`EMBEDDING_CACHE_VERSION` 可用于更换模型后刷新缓存。缓存只避免重新下载，不能省掉模型加载与 CPU 推理；小模型可在 CPU 运行，效果和耗时需实测。
+Actions 中另设 Variable `INSTALL_EMBEDDINGS=true` 安装可选依赖，设置 `executor.reranker: local`。
+精选模式现在可直接复用 upstream 的 embedding 排序：默认只对 `recommendation.embedding_sources: [arxiv]`
+生效，仍保留去重、名额分配和其他推荐来源。模型为 upstream 配置的
+`jinaai/jina-embeddings-v5-text-nano-retrieval`，使用摘要向量与原来的近期入库加权公式。
+`embedding_min_relevance: 3.0` 是独立于 BM25 的初始门槛（加权余弦相似度 × 10），可调整。
+Semantic Scholar 继续使用 Recommendations API 与原有轻量筛选；探索来源仍使用热度和主题筛选。
+
+模型权重单独缓存，`EMBEDDING_CACHE_VERSION` 可用于更换模型后刷新缓存。
+缓存只避免重新下载，不能省掉模型加载与 CPU 推理。`Embedding smoke test` 工作流可单独测试
+真实模型，不读取私人 Zotero 或发送邮件。若要完全使用 upstream 流程，另设 `recommendation.enabled: false`。
 
 ## 模块与扩展
 
