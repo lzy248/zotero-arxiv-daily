@@ -101,9 +101,13 @@ email:
 ## 运行、缓存与模型依赖
 
 ```bash
-uv run --no-dev src/zotero_arxiv_daily/main.py
+uv run --no-dev --extra embeddings src/zotero_arxiv_daily/main.py
 uv run pytest
 ```
+
+当前 `config/custom.yaml` 选择 `local`，因此本地启动需安装 `embeddings` extra。
+若将 `executor.reranker` 改为 `bm25`，启动命令可去掉 `--extra embeddings`。
+公共部署示例保留 BM25，部署者可按需选择。
 
 生产 Actions 使用 `--locked --no-dev`，显式启用基于 `uv.lock` 的 uv 依赖缓存，不安装开发环境。首次需要下载依赖，缓存命中可减少后续下载；每次 runner 仍会启动新进程。
 
