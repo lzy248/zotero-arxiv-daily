@@ -7,9 +7,8 @@ zotero:
 source:
   arxiv:
     conversion_delay: 1 # Seconds between conversions; 0 is suitable for metadata-only mode.
-    api_retries: 2
-    batch_retries: 2
-    rss_fallback: true # If metadata API fails, retain RSS title/abstract candidates.
+    rss_attempts: 5 # arXiv metadata is read directly from RSS (upstream HTTP 406 fix).
+    rss_retry_delay: 5 # Seconds between failed RSS fetch attempts.
     fetch_full_text: true # Set false for lightweight metadata-only recommendations.
     category: null # The categories of target arxiv papers. Find the abbr of your research area from [here](https://arxiv.org/category_taxonomy). Example: ["cs.AI","cs.CV","cs.LG","cs.CL"]
     include_cross_list: false # Whether to include arXiv cross-list papers in subscribed categories. Example: true

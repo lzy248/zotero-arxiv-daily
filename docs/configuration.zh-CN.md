@@ -96,8 +96,9 @@ recommendation:
 
 `zotero.include_path` / `ignore_path` 只筛选兴趣语料，不影响完整 Library 去重。
 `source.arxiv.category` 控制 arXiv 订阅分类；`include_cross_list: false` 排除 cross-list 公告。
-`rss_fallback: true` 在 arXiv 元数据 API 报错时继续使用已取得的 RSS 数据；可关闭。
-`api_retries` 与 `batch_retries` 控制两层有限重试，默认均为 2。
+arXiv 现沿用 upstream 的 RSS 直接读取元数据，不再请求曾返回 HTTP 406 的旧元数据 API。
+`rss_attempts`（默认 5）与 `rss_retry_delay`（默认 5 秒）控制 RSS 重试。
+旧 `api_retries`、`batch_retries`、`rss_fallback` 已不再使用，可从自定义配置中移除。
 
 ## 外部来源
 
@@ -135,9 +136,8 @@ OpenAlex field ID：17 计算机，31 物理，13 生物化学/遗传/分子生�
 
 | 配置 | 默认 | 说明 |
 | --- | --- | --- |
-| `source.arxiv.api_retries` | 2 | arXiv 客户端额外重试次数 |
-| `source.arxiv.batch_retries` | 2 | 批次遭遇 429 时最大尝试次数，之后可降级到 RSS |
-| `source.arxiv.rss_fallback` | true | API 失败后保留 RSS 候选 |
+| `source.arxiv.rss_attempts` | 5 | RSS 获取的最大尝试次数 |
+| `source.arxiv.rss_retry_delay` | 5 | RSS 重试之间的等待秒数 |
 | `source.arxiv.conversion_delay` | 1；示例为 0 | 候选转换间隔秒数；纯元数据转换无需等待 |
 | `recommendation.http.attempts` | 3 | 外部发现 API 总尝试次数，允许 1–10 |
 | `recommendation.http.read_timeout` | 30 | 单次请求读取超时秒数；连接超时 10 秒 |
