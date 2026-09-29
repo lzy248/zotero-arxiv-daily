@@ -4,6 +4,7 @@ import re
 
 import tiktoken
 from loguru import logger
+from openai import APITimeoutError, APIConnectionError
 
 from .protocol import _request_llm
 from .recommendation import normalize_arxiv
@@ -141,7 +142,7 @@ def generate_reading_notes(paper, client, llm_config, config):
         generation = dict(llm_config.get('generation_kwargs', {}))
         generation.pop('max_output_tokens', None)
         generation['max_tokens'] = config.max_output_tokens
-        params.update(generation_kwargs=generation, require_complete=True)
+        params.update(generation_kwargs=generation, require_complete=True, stream=config.get('stream', True))
         overhead = len(encode(instruction + header)) + 512
         use_chunks = mode == 'chunked' or (mode == 'auto' and budget is not None and len(tokens) + overhead > budget)
         if not use_chunks and budget is not None and len(tokens) + overhead > budget:
@@ -202,5 +203,10 @@ def generate_reading_notes(paper, client, llm_config, config):
     except Exception as exc:
         logger.warning('Reading notes unavailable ({})', type(exc).__name__)
         status = getattr(exc, 'status_code', None)
-        paper.reading_notes_status = (f'模型服务未接受笔记请求（HTTP {status}），请检查模型、权限及上下文／输出限额。'
-                                      if status else '详细笔记未通过证据或格式校验，请参考摘要或阅读原文。')
+        if isinstance(exc, APITimeoutError):
+            paper.reading_notes_status = '模型全文阅读请求超时，未生成笔记；可增加 llm.api.timeout 后重试，不会截断论文。'
+        elif isinstance(exc, APIConnectionError):
+            paper.reading_notes_status = '连接模型服务失败，未生成笔记；请检查接口连接后重试。'
+        else:
+            paper.reading_notes_status = (f'模型服务未接受笔记请求（HTTP {status}），请检查模型、权限及上下文／输出限额。'
+                                          if status else '详细笔记未通过证据或格式校验，请参考摘要或阅读原文。')

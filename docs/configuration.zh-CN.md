@@ -124,6 +124,7 @@ OpenAlex field ID：17 计算机，31 物理，13 生物化学/遗传/分子生�
 | `llm.language` | TLDR 语言；中文填 `Chinese` |
 | `llm.reading_notes.language` | 笔记语言；中文填 `Chinese` |
 | `llm.reading_notes.mode` | 默认 `full`，全文直读；`auto` 仅超限时分段；`chunked` 强制分段 |
+| `llm.reading_notes.stream` | 默认 true，流式接收长输出，完整接收并校验后才显示；不支持 SSE 的兼容服务可设 false |
 | `llm.reading_notes.context_window_tokens` | 总上下文，默认 200000，包含输入和预留输出 |
 | `llm.reading_notes.max_input_tokens` | 默认 null，不另设输入上限；仍受总上下文减去输出后的容量限制 |
 | `llm.reading_notes.max_output_tokens` | 最大输出，默认 65536（64 Ki tokens），不是要求生成这么长 |
@@ -143,6 +144,8 @@ OpenAlex field ID：17 计算机，31 物理，13 生物化学/遗传/分子生�
 只有在 auto/chunked 模式下，超过最大块数才会均匀取样并标注覆盖；原文表格保留，图片/复杂公式仍可能缺失。
 每块证据必须提供在该片段中能找到的原文引用；证据提取失败会重试并标注，不能将某一片段未提及误判为整篇论文缺失。
 最终笔记使用同一份证据，TLDR 从创新点和方法解释中提炼，而非独立强调性能数字。
+流式接收依据 [OpenAI Docs](https://developers.openai.com/api/docs/guides/streaming-responses) 的事件格式实现；
+只有收到正常结束标记且 JSON 校验通过才显示笔记，不能把中途断开的输出当作完整结果。
 设置 `source.arxiv.fetch_full_text: false` 可避免候选阶段下载全文，笔记阶段仍会下载
 最终入选论文；关闭 LLM 时，推荐无需任何模型或全文。
 
@@ -156,7 +159,7 @@ OpenAlex field ID：17 计算机，31 物理，13 生物化学/遗传/分子生�
 | `recommendation.http.attempts` | 3 | 外部发现 API 总尝试次数，允许 1–10 |
 | `recommendation.http.read_timeout` | 30 | 单次请求读取超时秒数；连接超时 10 秒 |
 | `recommendation.http.max_retry_delay` | 30 | 指数退避或 Retry-After 等待秒数上限 |
-| `llm.api.timeout` | 90 | LLM 单次请求超时秒数 |
+| `llm.api.timeout` | 300 | LLM 单次请求超时秒数；全文与长输出通常需要更长等待 |
 | `llm.api.max_retries` | 2 | SDK 针对临时网络/限流/服务端错误的额外重试 |
 | `llm.reading_notes.format_attempts` | 2 | 最终笔记 JSON 格式或字段不完整时的最大生成尝试，允许 1–5 |
 
@@ -177,7 +180,7 @@ OpenAlex field ID：17 计算机，31 物理，13 生物化学/遗传/分子生�
 
 手机窄屏通过媒体查询缩小边距；客户端忽略样式时仍保留百分比宽度。
 定时在 `.github/workflows/main.yml` 的 cron 中配置；GitHub cron 不支持从 Variable
-动态插入。当前 `11 3 * * *` 即北京时间每天 11:11，可能有平台调度延迟。
+动态插入。当前 `0 23 * * *` 即北京时间次日 07:00，可能有平台调度延迟。
 
 Actions Variables 除 `CUSTOM_CONFIG` 外：
 

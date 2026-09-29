@@ -222,3 +222,16 @@ def test_output_budget_forwarded_without_prose_ceiling(config, monkeypatch):
     notes.generate_reading_notes(p, object(), config.llm, config.llm.reading_notes)
     assert params_seen[0]['generation_kwargs']['max_tokens'] == 65536
     assert len(p.reading_notes['method']) > 5000
+
+
+def test_api_timeout_is_reported_as_timeout(config, monkeypatch):
+    import httpx
+    from openai import APITimeoutError
+    monkeypatch.setattr(notes, 'fetch_full_text', lambda *a: 'Source evidence')
+    def request(*args):
+        raise APITimeoutError(request=httpx.Request('POST', 'https://example.org'))
+    monkeypatch.setattr(notes, '_request_llm', request)
+    p = paper()
+    notes.generate_reading_notes(p, object(), config.llm, config.llm.reading_notes)
+    assert p.reading_notes is None and '超时' in p.reading_notes_status
+    assert '格式校验' not in p.reading_notes_status

@@ -12,12 +12,33 @@ RawPaperItem = TypeVar('RawPaperItem')
 def _request_llm(openai_client: OpenAI, llm_params: dict, messages: list[dict]) -> str:
     api_mode = llm_params.get("api_mode", "chat_completion")
     generation_kwargs = dict(llm_params.get("generation_kwargs", {}))
+    stream = llm_params.get('stream', generation_kwargs.pop('stream', False))
+    if stream:
+        generation_kwargs['stream'] = True
 
     if api_mode == "chat_completion":
         response = openai_client.chat.completions.create(
             messages=messages,
             **generation_kwargs,
         )
+        if stream:
+            parts, finish_reason = [], None
+            try:
+                for chunk in response:
+                    for choice in chunk.choices:
+                        if getattr(choice, 'index', 0) != 0:
+                            continue
+                        content = getattr(choice.delta, 'content', None)
+                        if content:
+                            parts.append(content)
+                        if choice.finish_reason:
+                            finish_reason = choice.finish_reason
+            finally:
+                if hasattr(response, 'close'):
+                    response.close()
+            if llm_params.get('require_complete') and finish_reason != 'stop':
+                raise ValueError('LLM stream did not complete normally')
+            return ''.join(parts)
         if llm_params.get('require_complete') and getattr(response.choices[0], 'finish_reason', None) == 'length':
             raise ValueError('LLM output exhausted its token budget')
         return response.choices[0].message.content
@@ -30,6 +51,22 @@ def _request_llm(openai_client: OpenAI, llm_params: dict, messages: list[dict]) 
             input=messages,
             **generation_kwargs,
         )
+        if stream:
+            parts, completed = [], False
+            try:
+                for event in response:
+                    if event.type == 'response.output_text.delta':
+                        parts.append(event.delta)
+                    elif event.type == 'response.completed':
+                        completed = True
+                    elif event.type in ('error', 'response.failed', 'response.incomplete'):
+                        raise ValueError('LLM response stream failed or incomplete')
+            finally:
+                if hasattr(response, 'close'):
+                    response.close()
+            if llm_params.get('require_complete') and not completed:
+                raise ValueError('LLM response stream ended before completion')
+            return ''.join(parts)
         if llm_params.get('require_complete') and getattr(response, 'status', None) == 'incomplete':
             raise ValueError('LLM output incomplete')
         return response.output_text
