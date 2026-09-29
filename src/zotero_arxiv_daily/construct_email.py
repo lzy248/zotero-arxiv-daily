@@ -4,14 +4,7 @@ from html import escape
 import math
 from urllib.parse import urlsplit
 from .protocol import Paper
-
-NOTE_HEADINGS = {
-    'background': '研究问题与背景',
-    'contributions': '核心贡献与已有工作的区别',
-    'method': '方法原理与关键公式 / 算法',
-    'experiments': '实验设置、主要结果与证据',
-    'limitations': '局限性与未解决的问题',
-}
+from .note_prompts import SECTIONS as NOTE_HEADINGS
 
 framework = '''<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -22,6 +15,10 @@ framework = '''<!DOCTYPE html>
   .email-outer { padding:12px 6px !important; }
   .email-padding { padding:18px 14px !important; }
   .paper-title { font-size:20px !important; }
+  .notes-table thead { display:none !important; }
+  .notes-table tr { display:block !important; margin:10px 0 !important; }
+  .notes-table td { display:block !important; width:auto !important; }
+  .table-label { display:block !important; font-weight:bold; color:#157a80; margin-bottom:4px; }
 }
 </style></head>
 <body style="margin:0;padding:0;background-color:#f3f5f7;color:#263548;font-family:Arial,'Microsoft YaHei',sans-serif;">
@@ -70,12 +67,40 @@ style="width:100%;table-layout:fixed;background-color:#ffffff;border:1px solid #
 </td></tr></table>'''
 
 
+def _notes_table(rows, columns, caption):
+    if not rows:
+        return ''
+    headings = ''.join(f'<th scope="col" style="text-align:left;padding:10px;background:#eaf3f4;">{escape(label)}</th>' for _, label in columns)
+    body = ''
+    for row in rows:
+        cells = ''.join('<td style="vertical-align:top;padding:10px;border-bottom:1px solid #dfe6ed;overflow-wrap:anywhere;">'
+                        + f'<span class="table-label" style="display:none;">{escape(label)}</span>'
+                        + escape(str(row.get(key, '未提供'))) + '</td>' for key, label in columns)
+        body += f'<tr>{cells}</tr>'
+    return (f'<table class="notes-table" width="100%" cellspacing="0" cellpadding="0" style="table-layout:fixed;font-size:13px;line-height:1.7;margin:16px 0;border:1px solid #dfe6ed;">'
+            f'<caption style="text-align:left;font-weight:bold;padding:8px 0;color:#203e55;">{escape(caption)}</caption>'
+            f'<thead><tr>{headings}</tr></thead><tbody>{body}</tbody></table>')
+
+
+def _method_flow(steps):
+    if not steps:
+        return ''
+    items = []
+    for i, step in enumerate(steps, 1):
+        if i > 1:
+            items.append('<tr><td align="center" style="color:#259397;padding:4px;">↓</td></tr>')
+        items.append(f'<tr><td style="padding:10px 14px;background:#f0f7f7;border-left:3px solid #259397;font-size:13px;line-height:1.7;">'
+                     f'<strong>{i:02d}</strong> · {escape(step)}</td></tr>')
+    return '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:14px 0;table-layout:fixed;">' + ''.join(items) + '</table>'
+
+
 def notes_html(paper, collapsible=False):
     if not paper.reading_notes:
         if paper.reading_notes_status:
             return f'<p style="font-size:12px;color:#758294;">{escape(paper.reading_notes_status)}</p>'
         return ''
     sections = []
+    visuals = paper.reading_notes_visuals or {}
     for index, (key, heading) in enumerate(NOTE_HEADINGS.items(), 1):
         text = paper.reading_notes.get(key, '未提供 / 无法判断')
         paragraphs = ''.join(
@@ -83,6 +108,14 @@ def notes_html(paper, collapsible=False):
             for line in text.splitlines() if line.strip())
         sections.append(f'<h3 style="margin:22px 0 8px;font-size:15px;color:#203e55;">'
                         f'<span style="color:#259397;">{index:02d}</span> {heading}</h3>{paragraphs}')
+        if key == 'method':
+            sections.append(_method_flow(visuals.get('pipeline', [])))
+            sections.append(_notes_table(visuals.get('method_map', []),
+                [('difficulty', '困难 / Gap'), ('design', '对应设计'), ('mechanism', '如何起作用'), ('evidence', '原文依据')], '困难与设计的对应关系'))
+        if key == 'experiments':
+            sections.append(_notes_table(visuals.get('experiment_table', []),
+                [('comparison', '对照 / 消融'), ('setting', '条件与指标'), ('result', '观察结果'),
+                 ('meaning', '支持什么结论'), ('evidence', '原文依据')], '贡献与实验依据'))
     body = (f'<p style="margin:12px 0;color:#758294;font-size:12px;line-height:1.7;">'
             f'阅读依据：{escape(paper.reading_notes_basis or "未标注")}</p>' + ''.join(sections))
     if collapsible:

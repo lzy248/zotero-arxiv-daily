@@ -123,12 +123,26 @@ OpenAlex field ID：17 计算机，31 物理，13 生物化学/遗传/分子生�
 | `llm.generation_kwargs.model` | 服务商实际支持的模型 ID |
 | `llm.language` | TLDR 语言；中文填 `Chinese` |
 | `llm.reading_notes.language` | 笔记语言；中文填 `Chinese` |
-| `llm.reading_notes.chunk_tokens` | 每块输入预算，默认 8000，最小 500 |
-| `llm.reading_notes.max_chunks` | 最多处理块数，默认 6，允许 1–12 |
-| `llm.reading_notes.max_output_tokens` | 最终笔记输出预算，默认 3500 |
+| `llm.reading_notes.mode` | 默认 `full`，全文直读；`auto` 仅超限时分段；`chunked` 强制分段 |
+| `llm.reading_notes.context_window_tokens` | 总上下文，默认 200000，包含输入和预留输出 |
+| `llm.reading_notes.max_input_tokens` | 默认 null，不另设输入上限；仍受总上下文减去输出后的容量限制 |
+| `llm.reading_notes.max_output_tokens` | 最大输出，默认 65536（64 Ki tokens），不是要求生成这么长 |
+| `llm.reading_notes.section_target_chars` | 默认 null，不设每节目标字数；可按需设整数 |
+| `llm.reading_notes.max_section_chars` | 默认 null，无每节字符上限；即使配置上限也只校验/重试，不静默截断 |
+| `llm.reading_notes.include_visuals` | 默认 true，生成困难—设计表、实验依据表和方法流程图 |
+| `llm.reading_notes.max_visual_rows` / `max_pipeline_steps` | 默认 null；可限制表格行数或流程步骤 |
+| `llm.reading_notes.chunk_tokens` | 分段模式每块输入，默认 8000，最小 500；full 模式不使用 |
+| `llm.reading_notes.max_chunks` | 分段模式最多块数，默认 6，允许 1–12 |
+| `llm.reading_notes.extract_max_output_tokens` | 每块结构化证据输出上限，默认 3000；不用于全文直读 |
+| `llm.reading_notes.raw_anchor_tokens` | 分段时额外保留的论文开头原文，默认 4000，防止丢失问题定义 |
 | `llm.reading_notes.extraction_timeout` | 每种全文提取方式超时秒数，默认 90 |
 
-超过最大块数时均匀取样并标注覆盖范围，非静默只取开头。图片/复杂公式可能缺失。
+默认全文模式没有分段摘要压缩。200000 总上下文预留 65536 输出及 512 tokens 消息开销后，
+最多约 133952 tokens 可用于系统提示、标题、摘要和全文；实际分词可能与服务商略有差异。
+调大这些值不会改变服务商的真实容量。若服务商拒绝限额，笔记会显示失败而非假装完整阅读。
+只有在 auto/chunked 模式下，超过最大块数才会均匀取样并标注覆盖；原文表格保留，图片/复杂公式仍可能缺失。
+每块证据必须提供在该片段中能找到的原文引用；证据提取失败会重试并标注，不能将某一片段未提及误判为整篇论文缺失。
+最终笔记使用同一份证据，TLDR 从创新点和方法解释中提炼，而非独立强调性能数字。
 设置 `source.arxiv.fetch_full_text: false` 可避免候选阶段下载全文，笔记阶段仍会下载
 最终入选论文；关闭 LLM 时，推荐无需任何模型或全文。
 

@@ -10,11 +10,18 @@ notes = {
     'experiments': '正式笔记会列出数据集、基线、评估指标和主要结果，并在可用时标明对应章节或表格。\n当前内容仅演示排版，因此不包含虚构的实验数字。',
     'limitations': '这一节整理作者讨论的局限性与尚未解决的问题；额外的批判性分析需要明确标为分析，不与作者结论混淆。',
 }
+visuals = {
+    'method_map': [{'difficulty': '示例：同类错误反复出现', 'design': '示例机制',
+                    'mechanism': '这里应解释信息如何流动，以及该设计为什么缓解困难。', 'evidence': '排版示例，非论文结论'}],
+    'experiment_table': [{'comparison': '完整方法与移除组件的对照', 'setting': '数据与控制条件',
+                          'result': '此处应填原文支持的结果，不编造数字', 'meaning': '说明该对照检验了哪项贡献', 'evidence': '排版示例'}],
+    'pipeline': ['读取任务与约束', '生成并评估候选', '根据证据更新下一步决策'],
+}
 papers = [Paper(source='arxiv', title='示例论文：从问题设定到实验结论，完整阅读一项研究',
     authors=['Researcher A', 'Researcher B'], abstract='', url='https://arxiv.org',
     tldr='先看一句话概括，再按需要阅读方法、实验与局限性。此邮件仅展示排版。',
     recommendation_type='Recent Interest', recommendation_reason='与你最近收藏的研究主题相关',
-    reading_notes=notes, reading_notes_basis='排版示例 · 未调用 LLM'),
+    reading_notes=notes, reading_notes_visuals=visuals, reading_notes_basis='排版示例 · 未调用 LLM'),
     Paper(source='openalex', title='示例论文：跨学科探索带来的新问题', authors=['Researcher C'],
     abstract='', url='https://openalex.org', tldr='这张卡片演示全文不可获取时的摘要解读与明确的内容依据。',
     recommendation_type='Explore / Trending', recommendation_reason='近期受到关注的跨领域研究',

@@ -281,3 +281,11 @@ def test_rss_retry_settings_are_respected(config, monkeypatch):
     with pytest.raises(RuntimeError, match='after 2 attempts'):
         ArxivRetriever(config)._retrieve_raw_papers()
     assert len(calls) == 2 and waits == [3]
+
+
+def test_html_extraction_keeps_table_cells(monkeypatch):
+    import trafilatura
+    html = '<html><body><p>' + 'Scientific paper evidence and findings. ' * 30 + '</p><table><tr><td>Baseline</td><td>62.4</td></tr><tr><td>Proposed</td><td>70.1</td></tr></table></body></html>'
+    monkeypatch.setattr(trafilatura, 'fetch_url', lambda url: html)
+    result = arxiv_retriever._extract_text_from_html_worker('https://arxiv.org/html/example')
+    assert '| Baseline | 62.4 |' in result and '| Proposed | 70.1 |' in result

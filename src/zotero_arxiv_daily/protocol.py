@@ -18,6 +18,8 @@ def _request_llm(openai_client: OpenAI, llm_params: dict, messages: list[dict]) 
             messages=messages,
             **generation_kwargs,
         )
+        if llm_params.get('require_complete') and getattr(response.choices[0], 'finish_reason', None) == 'length':
+            raise ValueError('LLM output exhausted its token budget')
         return response.choices[0].message.content
 
     if api_mode == "response":
@@ -28,6 +30,8 @@ def _request_llm(openai_client: OpenAI, llm_params: dict, messages: list[dict]) 
             input=messages,
             **generation_kwargs,
         )
+        if llm_params.get('require_complete') and getattr(response, 'status', None) == 'incomplete':
+            raise ValueError('LLM output incomplete')
         return response.output_text
 
     raise ValueError(
@@ -60,17 +64,26 @@ class Paper:
     reading_notes: Optional[dict[str, str]] = None
     reading_notes_basis: Optional[str] = None
     reading_notes_status: Optional[str] = None
+    reading_notes_visuals: Optional[dict] = None
 
     def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
         lang = llm_params.get('language', 'English')
-        prompt = f"Given the following information of a paper, generate a one-sentence TLDR summary in {lang}:\n\n"
+        prompt = (f"Write a concise one- or two-sentence TLDR in {lang}. Lead with the concrete gap and "
+                  "the central new mechanism/insight: what changes relative to the closest prior approach, "
+                  "and why that change addresses the difficulty. Do not lead with benchmark scores, "
+                  "win counts, percentage improvements or generic claims of better performance. "
+                  "Do not invent novelty; distinguish a new mechanism from a combination of known ideas.\n\n")
         if self.title:
             prompt += f"Title:\n {self.title}\n\n"
 
         if self.abstract:
             prompt += f"Abstract: {self.abstract}\n\n"
 
-        if self.full_text:
+        if self.reading_notes:
+            prompt += 'Evidence-grounded reading notes (use the same core explanation):\n'
+            for key in ('contributions', 'method', 'background'):
+                prompt += f'{key}: {self.reading_notes.get(key, "")}\n\n'
+        elif self.full_text:
             prompt += f"Preview of main content:\n {self.full_text}\n\n"
 
         if not self.full_text and not self.abstract:
@@ -79,8 +92,8 @@ class Paper:
         
         # use gpt-4o tokenizer for estimation
         enc = tiktoken.encoding_for_model("gpt-4o")
-        prompt_tokens = enc.encode(prompt)
-        prompt_tokens = prompt_tokens[:4000]  # truncate to 4000 tokens
+        prompt_tokens = enc.encode(prompt, disallowed_special=())
+        prompt_tokens = prompt_tokens[:llm_params.get('tldr_input_tokens', 8000)]
         prompt = enc.decode(prompt_tokens)
         
         tldr = _request_llm(

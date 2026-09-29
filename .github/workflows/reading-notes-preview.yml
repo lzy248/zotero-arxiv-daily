@@ -1,0 +1,43 @@
+name: Preview reading notes (no email)
+on:
+  workflow_dispatch:
+    inputs:
+      arxiv_id:
+        description: Public arXiv paper ID
+        required: true
+        default: '2609.34717'
+      default_notes:
+        description: Use repository note defaults rather than CUSTOM_CONFIG overrides
+        type: boolean
+        default: true
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Generate notes from the public paper
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
+          ARXIV_ID: ${{ inputs.arxiv_id }}
+          DEFAULT_NOTES: ${{ inputs.default_notes }}
+        run: |
+          if [ -n "$CUSTOM_CONFIG" ]; then
+            printf "%s\n" "$CUSTOM_CONFIG" > config/custom.yaml
+          fi
+          if [ "$DEFAULT_NOTES" = "true" ]; then
+            uv run --locked --no-dev python scripts/preview_reading_notes.py --arxiv-id "$ARXIV_ID" --default-notes
+          else
+            uv run --locked --no-dev python scripts/preview_reading_notes.py --arxiv-id "$ARXIV_ID"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reading-notes-preview
+          path: outputs/reading-notes-preview/
+          retention-days: 7

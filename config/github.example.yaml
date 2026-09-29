@@ -30,6 +30,14 @@ llm:
   reading_notes:
     enabled: true
     language: Chinese
+    mode: full
+    max_input_tokens: null
+    context_window_tokens: 200000
+    max_output_tokens: 65536
+    section_target_chars: null
+    include_visuals: true
+    max_visual_rows: null
+    max_pipeline_steps: null
     format_attempts: 2
 
 source:

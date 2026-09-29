@@ -34,9 +34,19 @@ llm:
   reading_notes:
     enabled: false
     language: Chinese
+    mode: full # full: never compress; auto: chunk only over budget; chunked: always use ledgers.
+    max_input_tokens: null # No extra input cap beyond the total context minus reserved output.
+    context_window_tokens: 200000 # Total input + reserved output; leave 512 tokens for message overhead.
     chunk_tokens: 8000
     max_chunks: 6
-    max_output_tokens: 3500
+    extract_max_output_tokens: 3000
+    raw_anchor_tokens: 4000
+    max_output_tokens: 65536
+    section_target_chars: null # No fixed prose length target.
+    max_section_chars: null # No per-section truncation or character ceiling.
+    include_visuals: true
+    max_visual_rows: null
+    max_pipeline_steps: null
     extraction_timeout: 90 # Per extraction attempt, seconds.
     format_attempts: 2 # Retry malformed JSON/sections; API errors use SDK retries.
   enabled: true # Disable to use the original abstract without any LLM credentials.
@@ -51,6 +61,7 @@ llm:
     max_tokens: 16384
     model: ???
   language: English # Preferred language for the TL;DR. Example: English
+  tldr_input_tokens: 8000
 
 reranker:
   local:

@@ -103,7 +103,7 @@ def _extract_text_from_html_worker(html_url: str) -> str | None:
     downloaded = trafilatura.fetch_url(html_url)
     if downloaded is None:
         raise ValueError(f"Failed to download HTML from {html_url}")
-    text = trafilatura.extract(downloaded, include_comments=False, include_tables=False)
+    text = trafilatura.extract(downloaded, include_comments=False, include_tables=True, output_format='markdown')
     if not text:
         raise ValueError(f"No text extracted from {html_url}")
     return text
