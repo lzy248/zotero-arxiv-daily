@@ -107,7 +107,7 @@ class InterestProfile:
     Candidate-independent IDF comes from the recent library. Normalizing by
     the theoretical BM25 maximum gives a bounded score, not a probability.
     """
-    def __init__(self, corpus, config, now=None):
+    def __init__(self, corpus, config, now=None, *, timeless=False):
         if config.half_life_days <= 0 or config.recent_limit < 1 or config.query_terms < 1:
             raise ValueError('Interest window, half life and query size must be positive')
         if not 0 < config.min_relevance <= 1 or not 0 <= config.explore_max_relevance <= 1:
@@ -116,7 +116,8 @@ class InterestProfile:
             raise ValueError('Require positive matched terms and nonnegative interest slots')
         self.config = config
         self.now = utc_naive(now or datetime.now(timezone.utc))
-        self.corpus = sorted(corpus, key=lambda p: utc_naive(p.added_date), reverse=True)[:config.recent_limit]
+        self.corpus = (sorted(corpus, key=lambda p: p.title.casefold()) if timeless else
+                       sorted(corpus, key=lambda p: utc_naive(p.added_date), reverse=True)[:config.recent_limit])
         documents = [tokenize(" ".join([p.title, p.title, p.abstract,
                        " ".join(p.tags), " ".join(p.tags), " ".join(p.paths)])) for p in self.corpus]
         df = Counter(term for doc in documents for term in set(doc))
@@ -125,7 +126,7 @@ class InterestProfile:
         weights = Counter()
         for paper, doc in zip(self.corpus, documents):
             age = max(0, (self.now - utc_naive(paper.added_date)).days)
-            decay = 2 ** (-min(age / config.half_life_days, 100))
+            decay = 1 if timeless else 2 ** (-min(age / config.half_life_days, 100))
             tf = Counter(doc)
             norm = sum(1 + math.log(c) for c in tf.values()) or 1
             for term, count in tf.items():
@@ -162,15 +163,68 @@ class InterestProfile:
         return selected
 
 
-def focused_explore_candidates(candidates, config):
-    """TF-IDF unigram/bigram domain gate, independent of the user's narrow interests."""
-    include = list(config.get('explore_include_topics', []))
-    exclude = list(config.get('explore_exclude_topics', []))
-    if not candidates or not (include or exclude):
-        return {id(p) for p in candidates}
+class MainlineProfile:
+    """A fixed, independently scored anchor pool plus changing recent interests.
+
+    Each anchor has its own timeless query, so a smaller research strand cannot
+    disappear behind another strand's vocabulary or the recent-paper limit.
+    """
+    def __init__(self, corpus, anchors, config, now=None):
+        self.settings = config.mainline
+        weight = self.settings.weight
+        if not isinstance(weight, (int, float)) or isinstance(weight, bool) or not 0 < weight <= 1:
+            raise ValueError('mainline.weight must lie in (0, 1]')
+        if not 0 < self.settings.min_relevance <= 1:
+            raise ValueError('mainline.min_relevance must lie in (0, 1]')
+        if not 0 < self.settings.embedding_min_relevance <= 10:
+            raise ValueError('mainline.embedding_min_relevance must lie in (0, 10]')
+        if not isinstance(self.settings.strict, bool):
+            raise ValueError('mainline.strict must be true or false')
+        self.anchors = deduplicate(sorted(anchors, key=lambda p: p.title.casefold()), [])
+        if not self.anchors:
+            raise ValueError('Research mainline collection is empty; check mainline.include_path. No fallback to recent interests.')
+        # The same bibliographic work must not be counted in both pools.
+        self.recent = InterestProfile(deduplicate(corpus, self.anchors), config, now)
+        self.now = self.recent.now
+        self.anchor_profiles = [InterestProfile([p], config, self.now, timeless=True) for p in self.anchors]
+        self.corpus = [*self.anchors, *self.recent.corpus]
+        self.weight = weight if self.recent.corpus else 1.0
+
+    def mainline_score(self, paper):
+        return max(p.score(paper) for p in self.anchor_profiles)
+
+    def score(self, paper):
+        return self.weight * self.mainline_score(paper) + (1 - self.weight) * self.recent.score(paper)
+
+    def seeds(self, limit):
+        if limit <= 0:
+            return []
+        # Rotate anchors independently of dateAdded, so large collections are not
+        # permanently starved by a finite provider seed budget.
+        eligible = [p for p in self.anchors if p.doi or p.arxiv_id or p.semantic_scholar_id]
+        offset = self.now.toordinal() % max(1, len(eligible))
+        eligible = eligible[offset:] + eligible[:offset]
+        if self.settings.strict or self.weight == 1:
+            return eligible[:limit]
+        count = min(len(eligible), max(1, math.ceil(limit * self.weight)))
+        selected = eligible[:count]
+        selected.extend(self.recent.seeds(limit - len(selected)))
+        selected.extend(eligible[count:count + limit - len(selected)])
+        return selected
+
+
+def topic_candidates(candidates, include, exclude, min_score=.05, exclude_min_score=.05):
+    """TF-IDF unigram/bigram gate for explicit topic descriptions."""
+    if isinstance(include, str) or isinstance(exclude, str):
+        raise ValueError('Topic descriptions must be lists, not single strings')
+    include, exclude = list(include), list(exclude)
+    if not 0 <= min_score <= 1 or not 0 <= exclude_min_score <= 1:
+        raise ValueError('Topic thresholds must lie between zero and one')
     prototypes = include + exclude
     if any(not isinstance(t, str) or not tokenize(t) for t in prototypes):
-        raise ValueError('Explore topic descriptions must contain meaningful text')
+        raise ValueError('Topic descriptions must contain meaningful text')
+    if not candidates or not (include or exclude):
+        return {id(p) for p in candidates}
     texts = [f'{p.title} {p.title} {p.abstract}' for p in candidates]
     vectorizer = TfidfVectorizer(tokenizer=tokenize, token_pattern=None, ngram_range=(1, 2))
     vectors = vectorizer.fit_transform([*prototypes, *texts])
@@ -179,23 +233,50 @@ def focused_explore_candidates(candidates, config):
     for paper, row in zip(candidates, scores):
         positive = max(row[:len(include)], default=0)
         negative = max(row[len(include):], default=0)
-        if include and positive < config.get('explore_focus_min_score', .05):
+        if include and positive < min_score:
             continue
-        if exclude and negative >= config.get('explore_exclude_min_score', .05):
+        if exclude and negative >= exclude_min_score:
             if not include or negative >= positive:
                 continue
         selected.add(id(paper))
     return selected
 
 
-def select_daily(candidates, library, profile, config, max_papers=3, embedding_scores=None):
+def focused_explore_candidates(candidates, config):
+    return topic_candidates(candidates, config.get('explore_include_topics', []),
+                            config.get('explore_exclude_topics', []),
+                            config.get('explore_focus_min_score', .05),
+                            config.get('explore_exclude_min_score', .05))
+
+
+def select_daily(candidates, library, profile, config, max_papers=3, embedding_scores=None,
+                 mainline_embedding_scores=None):
     related, explore = [], []
+    topics = config.get('topic_filter', {})
+    in_topic = topic_candidates(candidates, topics.get('include_topics', []), topics.get('exclude_topics', []),
+                                topics.get('min_score', .05), topics.get('exclude_min_score', .05))
+    anchored = isinstance(profile, MainlineProfile)
     explore_sources = list(config.get('explore_sources', ['huggingface', 'openalex']))
     focused = focused_explore_candidates(
         [p for p in candidates if p.source in explore_sources], config)
     for paper in candidates:
+        if id(paper) not in in_topic:
+            continue
         embedding_score = (embedding_scores or {}).get(id(paper))
         relevance = profile.score(paper) if embedding_score is None else embedding_score
+        mainline_match = False
+        anchor_score = None
+        if anchored:
+            anchor_score = (mainline_embedding_scores or {}).get(id(paper))
+            if embedding_score is not None and anchor_score is None:
+                raise ValueError('Mainline embedding scores are required for embedding-ranked candidates')
+            threshold = (profile.settings.min_relevance if anchor_score is None
+                         else profile.settings.embedding_min_relevance)
+            if anchor_score is None:
+                anchor_score = profile.mainline_score(paper)
+            mainline_match = anchor_score >= threshold
+            if profile.settings.strict and not mainline_match:
+                continue
         paper.score = relevance
         if paper.source in explore_sources:
             if id(paper) in focused and paper.popularity > 0 and relevance <= config.explore_max_relevance:
@@ -212,6 +293,14 @@ def select_daily(candidates, library, profile, config, max_papers=3, embedding_s
                 paper.recommendation_type = "Recent Interest"
                 method = 'embedding similarity' if embedding_score is not None else 'BM25'
                 paper.recommendation_reason = f"New paper matching your recent Zotero topics ({method})"
+            if anchored:
+                if mainline_match:
+                    paper.recommendation_type = ('Mainline / Catch-up' if paper.source == 'semantic_scholar'
+                                                 else 'Research Mainline')
+                    method = 'embedding' if embedding_score is not None else 'BM25'
+                    paper.recommendation_reason = f'Matches your fixed Zotero research mainline ({method}: {anchor_score:.3f}; no time decay)'
+                elif paper.source == 'semantic_scholar':
+                    paper.recommendation_reason = 'Semantic Scholar recommendation from mainline and recent Zotero seeds; matches recent interests'
             related.append(paper)
     # Merge the two relevance rankings with reciprocal ranks, avoiding incomparable scales.
     merged = []

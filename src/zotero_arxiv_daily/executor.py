@@ -11,7 +11,7 @@ from .construct_email import render_email
 from .utils import send_email
 from openai import OpenAI
 from tqdm import tqdm
-from .recommendation import InterestProfile, select_daily, normalize_doi, normalize_s2, zotero_arxiv_id
+from .recommendation import InterestProfile, MainlineProfile, select_daily, normalize_doi, normalize_s2, zotero_arxiv_id
 from .discovery import discover
 from .reading_notes import generate_reading_notes
 
@@ -42,6 +42,17 @@ class Executor:
         }
         self.reranker = get_reranker_cls(config.executor.reranker)(config)
         self.curated = config.get('recommendation', {}).get('enabled', False)
+        mainline = config.get('recommendation', {}).get('mainline', {})
+        self.mainline_enabled = mainline.get('enabled', False)
+        if self.mainline_enabled and not self.curated:
+            raise ValueError('Research mainline requires recommendation.enabled: true')
+        self.mainline_patterns = []
+        if self.mainline_enabled:
+            patterns = mainline.get('include_path')
+            if (not isinstance(patterns, (list, ListConfig)) or not patterns
+                    or any(not isinstance(p, str) or not p.strip() for p in patterns)):
+                raise ValueError('mainline.include_path must be a nonempty list of collection path patterns')
+            self.mainline_patterns = list(patterns)
         if self.curated and config.executor.reranker not in ('bm25', 'local', 'api'):
             raise ValueError('Curated recommendations require bm25, local or api reranker')
         self.openai_client = (OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url,
@@ -109,7 +120,16 @@ class Executor:
     def run(self):
         library = self.fetch_zotero_corpus()
         corpus = self.filter_corpus(library)
-        if len(corpus) == 0:
+        # Mainline is an independent view of the same full Library, outside the
+        # recent include/ignore selectors. Whole-library dedup remains unchanged.
+        anchors = [p for p in library if any(glob_match(path, pattern)
+                   for path in p.paths for pattern in self.mainline_patterns)]
+        profile = None
+        if self.mainline_enabled:
+            profile = MainlineProfile(corpus, anchors, self.config.recommendation)
+            logger.info('Research mainline: {} fixed references; strict={}; weight={}',
+                        len(profile.anchors), profile.settings.strict, profile.weight)
+        if not corpus and not anchors:
             logger.error("No zotero papers found. Please check your zotero settings.")
             return
         all_papers = []
@@ -130,21 +150,26 @@ class Executor:
         logger.info(f"Total {len(all_papers)} papers retrieved from all sources")
         reranked_papers = []
         if self.curated:
-            profile = InterestProfile(corpus, self.config.recommendation)
+            profile = profile or InterestProfile(corpus, self.config.recommendation)
             all_papers.extend(discover(profile, self.config.recommendation))
             embedding_scores = {}
+            mainline_embedding_scores = {}
             if self.config.executor.reranker != 'bm25':
                 sources = self.config.recommendation.get('embedding_sources', ['arxiv'])
                 candidates = [p for p in all_papers if p.source in sources]
                 if candidates:
-                    embedding_corpus = [p for p in corpus if p.abstract and p.abstract.strip()]
-                    if not embedding_corpus:
-                        raise ValueError('Embedding ranking requires Zotero papers with abstracts')
                     logger.info('Embedding reranking {} candidates from {}', len(candidates), list(sources))
-                    ranked = self.reranker.rerank(candidates, embedding_corpus)
-                    embedding_scores = {id(p): float(p.score) for p in ranked}
+                    if self.mainline_enabled:
+                        embedding_scores, mainline_embedding_scores = self.reranker.score_mainline(candidates, profile)
+                    else:
+                        embedding_corpus = [p for p in corpus if p.abstract and p.abstract.strip()]
+                        if not embedding_corpus:
+                            raise ValueError('Embedding ranking requires Zotero papers with abstracts')
+                        ranked = self.reranker.rerank(candidates, embedding_corpus)
+                        embedding_scores = {id(p): float(p.score) for p in ranked}
             reranked_papers = select_daily(all_papers, library, profile, self.config.recommendation,
-                                           self.config.executor.max_paper_num, embedding_scores=embedding_scores)
+                                           self.config.executor.max_paper_num, embedding_scores=embedding_scores,
+                                           mainline_embedding_scores=mainline_embedding_scores)
         elif len(all_papers) > 0:
             logger.info("Reranking papers...")
             reranked_papers = self.reranker.rerank(all_papers, corpus)

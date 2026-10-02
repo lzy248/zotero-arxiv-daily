@@ -18,6 +18,29 @@ class BaseReranker(ABC):
             c.score = s
         candidates = sorted(candidates,key=lambda x: x.score,reverse=True)
         return candidates
+
+    def score_mainline(self, candidates, profile):
+        """Score both pools in one embedding call; anchors never age or dilute.
+
+        Max over anchors allows any fixed research strand to qualify. Recent
+        reading has a separately normalized budget, independent of its size.
+        """
+        if not candidates:
+            return {}, {}
+        anchors, recent = profile.anchors, profile.recent.corpus
+        text = lambda p: f'{p.title}\n{p.abstract}'.strip()
+        sim = np.asarray(self.get_similarity_score([text(p) for p in candidates],
+                                                  [text(p) for p in [*anchors, *recent]]))
+        if sim.shape != (len(candidates), len(anchors) + len(recent)) or not np.isfinite(sim).all():
+            raise ValueError('Invalid mainline embedding similarity matrix')
+        anchor_scores = np.clip(sim[:, :len(anchors)].max(axis=1), 0, 1) * 10
+        scores = anchor_scores.copy()
+        if recent:
+            weights = 1 / (1 + np.log10(np.arange(len(recent)) + 1))
+            recent_scores = (sim[:, len(anchors):] * (weights / weights.sum())).sum(axis=1) * 10
+            scores = profile.weight * anchor_scores + (1 - profile.weight) * recent_scores
+        return ({id(p): float(s) for p, s in zip(candidates, scores)},
+                {id(p): float(s) for p, s in zip(candidates, anchor_scores)})
     
     @abstractmethod
     def get_similarity_score(self, s1:list[str], s2:list[str]) -> np.ndarray:

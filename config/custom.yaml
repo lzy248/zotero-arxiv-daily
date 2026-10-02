@@ -39,6 +39,11 @@ executor:
 
 recommendation:
   enabled: true
+  mainline:
+    enabled: true
+    include_path: ["研究主线", "研究主线/**"]
+    weight: 0.6
+    strict: false # Mix fixed mainline references with recent interests without a mandatory mainline gate.
   interest_slots: 2
   explore_slots: 1
   min_interest_for_explore: 2

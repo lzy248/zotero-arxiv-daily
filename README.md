@@ -1,6 +1,6 @@
 # Daily Paper
 
-每天，从你的 Zotero 最近研究兴趣出发，挑选值得读的论文，并把中文摘要和可选的详细读书笔记发到邮箱。
+每天，从你的 Zotero 固定研究主线和最近研究兴趣出发，挑选值得读的论文，并把中文摘要和可选的详细读书笔记发到邮箱。
 
 本项目基于 [TideDra/zotero-arxiv-daily](https://github.com/TideDra/zotero-arxiv-daily) 二次开发，复用 Zotero 读取、arXiv 检索、全文提取、LLM 接口、SMTP 和 GitHub Actions。保留 upstream 历史与 AGPL-3.0 许可证，不重新构建整套系统。
 
@@ -17,6 +17,46 @@
 默认示例每天最多 3 篇，优先 2 篇相关 + 1 篇探索；数量、分配和来源上限均可修改。没有合格论文时少发，不降低质量阈值凑数。
 
 兴趣来自最近入库文献的标题、摘要、标签和收藏夹路径，按时间衰减加权，使用 TF-IDF/BM25 排序。无需本地 embedding、向量数据库或 GPU。完整 Zotero Library 与当日候选通过 DOI、arXiv ID、Semantic Scholar ID、规范化标题去重；不保存推荐历史，所以没有收藏的论文以后仍可能再次推荐。
+
+可另外指定一个 Zotero 集合作为**固定研究主线**：其中的已发表论文和强相关工作长期参与匹配，不受入库时间衰减或最近论文数量限制。严格模式要求所有推荐来源都匹配主线，防止临时阅读或热门论文带偏方向。
+
+## 固定研究主线
+
+1. 在当前 Zotero 个人库建立顶层集合 **研究主线**，加入自己的论文和强相关参考文献，并同步到 Zotero。已有条目可同时属于阅读集合和主线集合，无需复制文献。
+2. 把以下配置合并到当前 `recommendation` 块。此仓库的本地 `custom.yaml` 已按该名称开启主线软加权，不强制每篇推荐命中主线；公共部署示例默认关闭主线功能，建好集合后再打开。
+3. GitHub Actions 使用 `CUSTOM_CONFIG` 时，也要将这段加入该 Variable；它会覆盖仓库里的 `custom.yaml`。
+
+```yaml
+recommendation:
+  enabled: true
+  mainline:
+    enabled: true
+    include_path: ["研究主线", "研究主线/**"]
+    weight: 0.6
+    strict: false
+    min_relevance: 0.06
+    embedding_min_relevance: 3.0
+```
+
+主线分数取与任意一篇固定参考论文的最高匹配值，默认按 **60% 主线 + 40% 近期兴趣**计分；只有主线语料时使用 100% 主线。集合中的论文不会随时间失效，也不会因为其他主线或近期论文增多而被平均稀释。`strict: true` 对相关和探索来源都施加主线门槛；未达门槛时少发，不用偏题内容补位。`strict: false` 保留主线加权，但允许近期兴趣和探索扩展方向。
+
+Semantic Scholar 严格模式只使用主线论文作为 seeds；受 API 种子数量限制，每日轮换，全部参考论文仍每天参与本地匹配。集合为空或路径拼错会明确报错，不会静默退回近期兴趣。没有 DOI/arXiv/S2 ID 的条目可参与匹配，但不能用作 S2 种子。
+
+还可以配置作用于**全部来源**的文本主题过滤，独立于主线集合：
+
+```yaml
+recommendation:
+  topic_filter:
+    include_topics:
+      - factuality verification hallucination detection natural language inference
+      - dense retrieval text embeddings semantic matching
+    exclude_topics:
+      - video image generation camera 3D reconstruction
+    min_score: 0.05
+    exclude_min_score: 0.05
+```
+
+以上主题仅为示例，不会自动强加到配置中。主线与主题过滤都是相关性筛选，不等同于内容质量判断；阈值可根据结果调整。完整参数见[配置参考](docs/configuration.zh-CN.md#固定研究主线与全局主题过滤)。
 
 ## 快速部署
 
@@ -134,6 +174,8 @@ Actions 中另设 Variable `INSTALL_EMBEDDINGS=true` 安装可选依赖，设置
 `jinaai/jina-embeddings-v5-text-nano-retrieval`，使用摘要向量与原来的近期入库加权公式。
 `embedding_min_relevance: 3.0` 是独立于 BM25 的初始门槛（加权余弦相似度 × 10），可调整。
 Semantic Scholar 继续使用 Recommendations API 与原有轻量筛选；探索来源仍使用热度和主题筛选。
+
+启用主线后，embedding 改为对主线池与近期池分别打分，再按固定比例混合；主线取各参考论文的最高相似度，且使用标题与摘要，只有标题的条目也可作为参考。默认仍只有 `embedding_sources` 指定的来源使用 embedding，其余来源采用 BM25 主线门槛。
 
 模型权重单独缓存，`EMBEDDING_CACHE_VERSION` 可用于更换模型后刷新缓存。
 缓存只避免重新下载，不能省掉模型加载与 CPU 推理。`Embedding smoke test` 工作流可单独测试

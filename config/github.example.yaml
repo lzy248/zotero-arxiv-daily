@@ -55,6 +55,18 @@ executor:
 
 recommendation:
   enabled: true
+  mainline:
+    enabled: false # Create/fill this Zotero collection, then switch to true.
+    include_path: ["研究主线", "研究主线/**"]
+    weight: 0.6
+    strict: false
+    min_relevance: 0.06
+    embedding_min_relevance: 3.0
+  topic_filter: # Applies to all sources; optional extra topic boundary.
+    include_topics: []
+    exclude_topics: []
+    min_score: 0.05
+    exclude_min_score: 0.05
   interest_slots: 2
   explore_slots: 1
   min_interest_for_explore: 2

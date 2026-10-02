@@ -87,6 +87,18 @@ executor:
 # Opt-in extension. Keeping it disabled preserves upstream ranking behavior.
 recommendation:
   enabled: false
+  mainline:
+    enabled: false # Fixed references from a dedicated collection in the same Zotero library.
+    include_path: [] # e.g. ["Research Mainline", "Research Mainline/**"]. Independent of recent include/ignore_path.
+    weight: 0.6 # Fixed budget: mainline score * weight + recent score * (1 - weight).
+    strict: false # Require a mainline match from EVERY source, including explore; never pad off-topic.
+    min_relevance: 0.06 # Timeless per-reference BM25; strongest reference wins.
+    embedding_min_relevance: 3.0 # Strongest reference cosine * 10; only embedding_sources use this.
+  topic_filter: # Additional explicit topic gate for ALL sources, with or without mainline.
+    include_topics: []
+    exclude_topics: []
+    min_score: 0.05
+    exclude_min_score: 0.05
   http:
     attempts: 3
     read_timeout: 30

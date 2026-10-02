@@ -64,8 +64,9 @@ recommendation:
 - `recommendation.embedding_min_relevance: 3.0`：独立阈值，分数为 upstream 近期入库加权余弦相似度 × 10；不是概率，不与 BM25 门槛混用。
 - `reranker.local.model` / `encode_kwargs`：沿用 upstream 的模型与编码参数。
 
-embedding 使用 Zotero 摘要和原始近期入库排名衰减公式，不对候选再做 BM25 必须命中的限制。
-没有摘要的 Zotero 条目仍参与全库去重，但不参与 embedding 语料。
+未启用主线时，embedding 使用 Zotero 摘要和原始近期入库排名衰减公式，不对候选再做 BM25 必须命中的限制。
+此时没有摘要的 Zotero 条目仍参与全库去重，但不参与 embedding 语料。
+启用主线后的标题回退与双池计分见下一节。
 Semantic Scholar、Hugging Face、OpenAlex 不会改用本地模型召回，仍按原有接口和精选策略处理。
 
 | 参数 | 默认值 | 含义 |
@@ -99,6 +100,62 @@ recommendation:
 arXiv 现沿用 upstream 的 RSS 直接读取元数据，不再请求曾返回 HTTP 406 的旧元数据 API。
 `rss_attempts`（默认 5）与 `rss_retry_delay`（默认 5 秒）控制 RSS 重试。
 旧 `api_retries`、`batch_retries`、`rss_fallback` 已不再使用，可从自定义配置中移除。
+
+## 固定研究主线与全局主题过滤
+
+主线功能需要 `recommendation.enabled: true`，同时兼容 `bm25`、`local`、`api`。无需额外 Zotero 账号或数据库，在当前 Library 内建立一个专用集合即可。配置举例：
+
+```yaml
+recommendation:
+  enabled: true
+  mainline:
+    enabled: true
+    include_path: ["研究主线", "研究主线/**"]
+    weight: 0.6
+    strict: false
+    min_relevance: 0.06
+    embedding_min_relevance: 3.0
+  topic_filter:
+    include_topics: []
+    exclude_topics: []
+    min_score: 0.05
+    exclude_min_score: 0.05
+```
+
+| 参数 | 基础默认值 | 含义 |
+| --- | --- | --- |
+| `recommendation.mainline.enabled` | false | 是否使用固定主线集合；本地 custom.yaml 已开启 |
+| `mainline.include_path` | `[]` | 当前 Zotero 库中的集合完整路径 glob 列表；启用时必填 |
+| `mainline.weight` | 0.6 | 主线独立计分预算，范围 `(0, 1]`；近期池使用余下权重 |
+| `mainline.strict` | false | false：主线参与加权但不强制命中；true：所有来源，包括探索，必须达到主线门槛；本地配置为 false |
+| `mainline.min_relevance` | 0.06 | 非 embedding 来源匹配主线的归一化 BM25 门槛 |
+| `mainline.embedding_min_relevance` | 3.0 | embedding 来源匹配主线的余弦相似度 × 10 门槛 |
+| `recommendation.topic_filter.include_topics` | `[]` | 所有来源必须匹配其中至少一个文本主题；空列表不限制 |
+| `topic_filter.exclude_topics` | `[]` | 所有来源的排除主题；按相似度与包含主题比较 |
+| `topic_filter.min_score` | 0.05 | 全局包含主题的 TF-IDF 门槛 |
+| `topic_filter.exclude_min_score` | 0.05 | 全局排除主题的 TF-IDF 门槛 |
+
+表中 `mainline.*` / `topic_filter.*` 均位于 `recommendation` 下。现有 `explore_include_topics` / `explore_exclude_topics` 继续只控制探索来源；全局主题过滤、主线门槛与原有质量门槛同时生效。即使 embedding 主线通过，全局文本主题过滤仍可拒绝候选；不需要词面限制时保持 `topic_filter` 两个列表为空。
+
+### 固定语料如何避免漂移
+
+- 主线独立从完整 Library 读取，不受 `zotero.include_path` / `ignore_path` 约束。这两个旧参数仍只选择近期兴趣语料；如果不希望某论文影响主线，应从主线集合移除或缩小 `mainline.include_path`。
+- `研究主线` 匹配集合自身，`研究主线/**` 匹配其子集合；嵌套集合应写完整路径，例如 `科研/研究主线` 和 `科研/研究主线/**`。
+- 全部主线文献每天参与匹配，不使用 `recent_limit` 或时间衰减。BM25 为每篇主线论文建立独立的永久查询，再取最高匹配值，避免少量关键论文被其他文献挤掉。`query_terms` 仍限制每篇参考论文的词项数量。
+- 与主线重复的文献先从近期池去除，避免同一论文重复计权；近期池继续使用最近窗口与其原有时间/排名权重。
+- embedding 主线使用标题与摘要，空摘要时使用标题；取候选与任意主线文献的最高余弦相似度 × 10。主线和近期池一次性批量计算，不为每篇参考文献重复初始化模型。
+- 有近期池时：`final = weight × mainline + (1 - weight) × recent`；近期池为空时：`final = mainline`。
+- `strict: true` 先要求主线分数过阈值，再执行原有最终相关性、热度、名额和去重规则。因此主线匹配不保证一定入选；严格模式可能一天没有结果。
+- Semantic Scholar 的严格模式只用主线种子；软模式按主线权重预留种子名额，其余给近期兴趣。可用主线种子按日期轮换，不依赖入库日期；不受轮换影响的全部主线语料仍用于本地筛选。无 DOI/arXiv/S2 ID 的文献不能作该服务的种子，但仍可作本地主线参考。
+- 启用后集合为空、路径无匹配或参数非法时直接报错。不会为了出结果回退到普通近期推荐。关闭 `mainline.enabled` 恢复旧行为。
+
+### 使用步骤和边界
+
+在 Zotero 建立集合、加入自己的论文和强相关参考文献，并同步到云端。随后在本地配置或 GitHub Actions 的 `CUSTOM_CONFIG` 中开启主线。此功能只读取集合，不修改 Zotero，也不自动创建收藏夹。全库去重仍会排除所有已拥有论文，包括主线集合中的论文。
+
+全局文本主题过滤采用与探索主题相同的 TF-IDF 一、二元词组算法：包含主题达到门槛才保留，排除主题达到门槛且不低于包含主题时拒绝。它不会调用 LLM，最适合英文主题描述。BM25 和 TF-IDF 是词项相关性筛选，可能漏掉同义表达或保留共享术语的偏题文章；embedding 也不是研究价值的保证。阈值代表筛选强度，不是概率。
+
+这些规则只固定用于匹配的参考范围，不保存历史推荐、不训练模型。主线集合内容变化才会改变固定参考池；新的普通阅读条目不会替换它。
 
 ## 外部来源
 
