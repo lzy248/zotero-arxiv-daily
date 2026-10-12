@@ -3,12 +3,15 @@ from omegaconf import DictConfig
 from ..protocol import Paper, CorpusPaper
 import numpy as np
 from typing import Type
+from ..recency import recent_corpus
 class BaseReranker(ABC):
     def __init__(self, config:DictConfig):
         self.config = config
 
     def rerank(self, candidates:list[Paper], corpus:list[CorpusPaper]) -> list[Paper]:
-        corpus = sorted(corpus,key=lambda x: x.added_date,reverse=True)
+        corpus = recent_corpus(corpus, self.config.get('recommendation', {}) if self.config else {})
+        if not corpus:
+            raise ValueError('No eligible Zotero papers for the selected recency basis')
         time_decay_weight = 1 / (1 + np.log10(np.arange(len(corpus)) + 1))
         time_decay_weight: np.ndarray = time_decay_weight / time_decay_weight.sum()
         sim = self.get_similarity_score([c.abstract for c in candidates], [c.abstract for c in corpus])

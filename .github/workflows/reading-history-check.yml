@@ -1,0 +1,23 @@
+name: Check synced Zotero reading history (no email)
+on:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Check cloud lastRead availability (counts only)
+        env:
+          ZOTERO_ID: ${{ secrets.ZOTERO_ID }}
+          ZOTERO_KEY: ${{ secrets.ZOTERO_KEY }}
+          CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
+        run: |
+          if [ -n "$CUSTOM_CONFIG" ]; then
+            printf "%s\n" "$CUSTOM_CONFIG" > config/custom.yaml
+          fi
+          uv run --locked --no-dev python scripts/check_reading_history.py

@@ -204,3 +204,4 @@ class CorpusPaper:
     arxiv_id: Optional[str] = None
     semantic_scholar_id: Optional[str] = None
     url: str = ""
+    last_read_date: Optional[datetime] = None

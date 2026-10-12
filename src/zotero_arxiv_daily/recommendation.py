@@ -9,6 +9,7 @@ from urllib.parse import unquote
 
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from sklearn.feature_extraction.text import TfidfVectorizer
+from .recency import recent_corpus, interest_date
 
 STOP_WORDS = ENGLISH_STOP_WORDS | {
     "paper", "study", "results", "propose", "proposed", "approach", "method",
@@ -117,7 +118,7 @@ class InterestProfile:
         self.config = config
         self.now = utc_naive(now or datetime.now(timezone.utc))
         self.corpus = (sorted(corpus, key=lambda p: p.title.casefold()) if timeless else
-                       sorted(corpus, key=lambda p: utc_naive(p.added_date), reverse=True)[:config.recent_limit])
+                       recent_corpus(corpus, config)[:config.recent_limit])
         documents = [tokenize(" ".join([p.title, p.title, p.abstract,
                        " ".join(p.tags), " ".join(p.tags), " ".join(p.paths)])) for p in self.corpus]
         df = Counter(term for doc in documents for term in set(doc))
@@ -125,7 +126,7 @@ class InterestProfile:
         self.idf = {t: math.log(1 + (n - count + .5) / (count + .5)) for t, count in df.items()}
         weights = Counter()
         for paper, doc in zip(self.corpus, documents):
-            age = max(0, (self.now - utc_naive(paper.added_date)).days)
+            age = 0 if timeless else max(0, (self.now - utc_naive(interest_date(paper, config))).days)
             decay = 1 if timeless else 2 ** (-min(age / config.half_life_days, 100))
             tf = Counter(doc)
             norm = sum(1 + math.log(c) for c in tf.values()) or 1

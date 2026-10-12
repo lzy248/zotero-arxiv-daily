@@ -125,6 +125,7 @@ def make_stub_zotero_client(collections=None, items=None):
         return itms
 
     return SimpleNamespace(
+        client=SimpleNamespace(headers={}),
         everything=everything,
         collections=collections_fn,
         items=items_fn,

@@ -56,15 +56,32 @@ recommendation:
 
 ## 主题与兴趣
 
+`recommendation.recency_basis` 支持 `read`（最近阅读）与 `added`（最近添加）。
+基础配置保留 `added` 以兼容 upstream；用户配置和示例使用 `read`。
+阅读时间取个人 Library 的附件 `data.lastRead`（Unix 秒），按 `parentItem` 归并到论文，
+有多个附件时取最大值。请求显式携带 `Zotero-Schema-Version: 44`。
+GitHub Actions 直接读取云端已同步的记录，不需要本地常驻采集程序或额外数据库。
+
+`read` 同时影响近期语料排序、BM25 时间衰减、embedding 近期排名权重和 Semantic Scholar 近期 seeds。
+不使用 `dateModified`、文件访问时间或入库时间冒充阅读时间。无阅读记录的论文排除出近期池，
+仍保留在全库去重和固定主线中；没有任何近期记录时，已有主线按原有逻辑独立工作，否则不发送无依据的推荐。
+主线 60% / 近期 40% 的配置不变；仅在近期池为空时，主线按现有设计临时占 100%。
+
+Zotero 的 `lastRead` 表示附件打开/阅读时的活动时间，不代表读完或阅读时长；需要支持该字段的
+客户端，并将阅读活动同步到 zotero.org。外部阅读器未回写 Zotero 时不会更新此字段。
+当前项目使用个人 Library；群组 Library 的阅读时间同步路径不同，未在此接入。
+可运行 **Check synced Zotero reading history (no email)** 工作流检查云端是否有记录，只打印计数，不发邮件。
+[字段语义与同步规则](https://github.com/zotero/zotero-ios/issues/1246)
+
 相关性引擎由 `executor.reranker` 选择：`bm25`（无模型）、`local`（upstream 本地 embedding）、
 `api`（upstream embedding API）。这三种均可与 `recommendation.enabled: true` 的精选流程配合。
 本地 embedding 需要 Actions Variable `INSTALL_EMBEDDINGS=true`，或本地命令加 `--extra embeddings`。
 
 - `recommendation.embedding_sources: [arxiv]`：默认仅替换 arXiv 候选打分。
-- `recommendation.embedding_min_relevance: 3.0`：独立阈值，分数为 upstream 近期入库加权余弦相似度 × 10；不是概率，不与 BM25 门槛混用。
+- `recommendation.embedding_min_relevance: 3.0`：独立阈值，分数为 upstream 近期排名加权余弦相似度 × 10；不是概率，不与 BM25 门槛混用。
 - `reranker.local.model` / `encode_kwargs`：沿用 upstream 的模型与编码参数。
 
-未启用主线时，embedding 使用 Zotero 摘要和原始近期入库排名衰减公式，不对候选再做 BM25 必须命中的限制。
+未启用主线时，embedding 使用 Zotero 摘要和原始近期排名衰减公式，按配置的阅读/入库时间排序，不对候选再做 BM25 必须命中的限制。
 此时没有摘要的 Zotero 条目仍参与全库去重，但不参与 embedding 语料。
 启用主线后的标题回退与双池计分见下一节。
 Semantic Scholar、Hugging Face、OpenAlex 不会改用本地模型召回，仍按原有接口和精选策略处理。
@@ -72,7 +89,7 @@ Semantic Scholar、Hugging Face、OpenAlex 不会改用本地模型召回，仍�
 | 参数 | 默认值 | 含义 |
 | --- | --- | --- |
 | `recommendation.recent_limit` | 100 | 最近多少篇 Zotero 文献参与兴趣提取 |
-| `recommendation.half_life_days` | 60 | 入库时间权重半衰期 |
+| `recommendation.half_life_days` | 60 | BM25 所选阅读/入库时间的权重半衰期 |
 | `recommendation.query_terms` | 80 | TF-IDF 兴趣词数量上限 |
 | `recommendation.min_matched_terms` | 3 | BM25 候选最少命中词项 |
 | `recommendation.min_relevance` | 0.06 | 相关论文归一化 BM25 门槛，不是概率 |

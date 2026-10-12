@@ -55,6 +55,7 @@ executor:
 
 recommendation:
   enabled: true
+  recency_basis: read
   mainline:
     enabled: false # Create/fill this Zotero collection, then switch to true.
     include_path: ["研究主线", "研究主线/**"]

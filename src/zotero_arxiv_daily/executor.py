@@ -14,6 +14,7 @@ from tqdm import tqdm
 from .recommendation import InterestProfile, MainlineProfile, select_daily, normalize_doi, normalize_s2, zotero_arxiv_id
 from .discovery import discover
 from .reading_notes import generate_reading_notes
+from .recency import reading_dates, recent_corpus
 
 
 def normalize_path_patterns(patterns: list[str] | ListConfig | None, config_key: str) -> list[str] | None:
@@ -62,11 +63,17 @@ class Executor:
     def fetch_zotero_corpus(self) -> list[CorpusPaper]:
         logger.info("Fetching zotero corpus")
         zot = zotero.Zotero(self.config.zotero.user_id, 'user', self.config.zotero.api_key)
+        zot.client.headers['Zotero-Schema-Version'] = '44'
         collections = zot.everything(zot.collections())
         collections = {c['key']:c for c in collections}
         # Keep all bibliographic items for deduplication, even without abstracts.
         corpus = zot.everything(zot.items(itemType='-attachment || note || annotation'))
         corpus = [c for c in corpus if c['data'].get('title')]
+        dates = {}
+        if self.config.recommendation.get('recency_basis', 'added') == 'read':
+            attachments = zot.everything(zot.items(itemType='attachment'))
+            dates = reading_dates(attachments)
+            logger.info('Synced Zotero reading timestamps found for {} parent papers', len(dates))
         def get_collection_path(col_key:str) -> str:
             if p := collections[col_key]['data']['parentCollection']:
                 return get_collection_path(p) + '/' + collections[col_key]['data']['name']
@@ -87,6 +94,7 @@ class Executor:
             arxiv_id=zotero_arxiv_id(c['data']),
             url=c['data'].get('url', ''),
             semantic_scholar_id=normalize_s2(c['data'].get('url')) or normalize_s2(c['data'].get('extra')),
+            last_read_date=dates.get(c.get('key') or c['data'].get('key')),
         ) for c in corpus]
     
     def filter_corpus(self, corpus:list[CorpusPaper]) -> list[CorpusPaper]:
@@ -119,7 +127,9 @@ class Executor:
     
     def run(self):
         library = self.fetch_zotero_corpus()
-        corpus = self.filter_corpus(library)
+        corpus = recent_corpus(self.filter_corpus(library), self.config.recommendation)
+        logger.info('Recent-interest basis: {}; eligible papers: {}',
+                    self.config.recommendation.get('recency_basis', 'added'), len(corpus))
         # Mainline is an independent view of the same full Library, outside the
         # recent include/ignore selectors. Whole-library dedup remains unchanged.
         anchors = [p for p in library if any(glob_match(path, pattern)
@@ -130,7 +140,7 @@ class Executor:
             logger.info('Research mainline: {} fixed references; strict={}; weight={}',
                         len(profile.anchors), profile.settings.strict, profile.weight)
         if not corpus and not anchors:
-            logger.error("No zotero papers found. Please check your zotero settings.")
+            logger.error("No eligible Zotero interest papers or fixed references. Check reading sync and collection settings.")
             return
         all_papers = []
         for source, retriever in self.retrievers.items():

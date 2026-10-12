@@ -10,13 +10,17 @@
 
 | 类型 | 来源 | 用途 |
 | --- | --- | --- |
-| Recent Interest | arXiv | 新发布、与你最近收藏主题相关的论文 |
+| Recent Interest | arXiv | 新发布、与你最近阅读主题相关的论文 |
 | Related / Catch-up | Semantic Scholar Recommendations | 近期 Zotero 文献作为 seeds，寻找遗漏或经典相关工作 |
 | Explore / Trending | Hugging Face Daily Papers、OpenAlex | 在可配置的主题范围中发现热门论文 |
 
 默认示例每天最多 3 篇，优先 2 篇相关 + 1 篇探索；数量、分配和来源上限均可修改。没有合格论文时少发，不降低质量阈值凑数。
 
-兴趣来自最近入库文献的标题、摘要、标签和收藏夹路径，按时间衰减加权，使用 TF-IDF/BM25 排序。无需本地 embedding、向量数据库或 GPU。完整 Zotero Library 与当日候选通过 DOI、arXiv ID、Semantic Scholar ID、规范化标题去重；不保存推荐历史，所以没有收藏的论文以后仍可能再次推荐。
+近期兴趣的时间依据可配置：`recommendation.recency_basis: read` 使用 Zotero 附件同步的 `lastRead`，
+同一论文取所有附件的最新阅读时间；`added` 则使用原来的入库时间。当前用户配置和部署示例选择 `read`。
+标题、摘要、标签和收藏夹路径参与 TF-IDF/BM25 兴趣建模，也可用下述 embedding 排序。
+完整 Zotero Library 与当日候选通过 DOI、arXiv ID、Semantic Scholar ID、规范化标题去重；不保存推荐历史。
+阅读模式下未读或未同步阅读记录的论文不进入近期池，但仍参与去重，也仍可作为固定研究主线参考。
 
 可另外指定一个 Zotero 集合作为**固定研究主线**：其中的已发表论文和强相关工作长期参与匹配，不受入库时间衰减或最近论文数量限制。严格模式要求所有推荐来源都匹配主线，防止临时阅读或热门论文带偏方向。
 
@@ -171,7 +175,8 @@ uv run --extra embeddings src/zotero_arxiv_daily/main.py executor.reranker=local
 Actions 中另设 Variable `INSTALL_EMBEDDINGS=true` 安装可选依赖，设置 `executor.reranker: local`。
 精选模式现在可直接复用 upstream 的 embedding 排序：默认只对 `recommendation.embedding_sources: [arxiv]`
 生效，仍保留去重、名额分配和其他推荐来源。模型为 upstream 配置的
-`jinaai/jina-embeddings-v5-text-nano-retrieval`，使用摘要向量与原来的近期入库加权公式。
+`jinaai/jina-embeddings-v5-text-nano-retrieval`，使用摘要向量与 upstream 的近期排名加权公式；
+排名依据由 `recency_basis` 决定，当前是最近阅读时间。
 `embedding_min_relevance: 3.0` 是独立于 BM25 的初始门槛（加权余弦相似度 × 10），可调整。
 Semantic Scholar 继续使用 Recommendations API 与原有轻量筛选；探索来源仍使用热度和主题筛选。
 

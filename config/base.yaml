@@ -87,6 +87,7 @@ executor:
 # Opt-in extension. Keeping it disabled preserves upstream ranking behavior.
 recommendation:
   enabled: false
+  recency_basis: added # added: dateAdded; read: latest synced attachment lastRead, no fallback.
   mainline:
     enabled: false # Fixed references from a dedicated collection in the same Zotero library.
     include_path: [] # e.g. ["Research Mainline", "Research Mainline/**"]. Independent of recent include/ignore_path.

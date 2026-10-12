@@ -39,6 +39,7 @@ executor:
 
 recommendation:
   enabled: true
+  recency_basis: read
   mainline:
     enabled: true
     include_path: ["研究主线", "研究主线/**"]
